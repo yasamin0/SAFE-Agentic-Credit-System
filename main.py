@@ -114,7 +114,7 @@ def data_preprocessing_tool(file_path: str):
             pd.DataFrame({"group": ["UNKNOWN"] * len(X_train)}).to_csv("sensitive_train.csv", index=False)
             pd.DataFrame({"group": ["UNKNOWN"] * len(X_test)}).to_csv("sensitive_test.csv", index=False)
 
-        # ---- Optionally drop sensitive from model features (still kept for audit) ----
+        # ---- Optionally drop sensitive from model features ----
         if DROP_SENSITIVE_FROM_MODEL and (SENSITIVE_FEATURE in X_train.columns):
             X_train = X_train.drop(columns=[SENSITIVE_FEATURE])
             X_test = X_test.drop(columns=[SENSITIVE_FEATURE])
@@ -256,7 +256,7 @@ def evaluation_and_risk_tool(description: str):
         with open('evaluation_report.md', 'w') as f:
             f.write(report_content)
 
-        # ---- LONG, HUMAN-READABLE REPORT ----
+        # write final report with details
         group_table = tmp.groupby("group").agg(
             n=("y_true", "count"),
             positive_rate=("y_pred", "mean"),
