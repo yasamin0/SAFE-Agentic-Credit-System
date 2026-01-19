@@ -20,26 +20,55 @@ from sklearn.pipeline import Pipeline
 from dotenv import load_dotenv
 load_dotenv() 
 
+# --- USER CONFIG (via .env or environment variables) ---
+DATA_PATH = os.getenv("DATA_PATH", "").strip() or None   # e.g. raw_credit_data.csv
+OPENML_ID = int(os.getenv("OPENML_ID", "31"))            # default German Credit (31)
+
+PRED_THRESHOLD = float(os.getenv("PRED_THRESHOLD", "0.50"))         # for y_pred
+APPROVAL_THRESHOLD = float(os.getenv("APPROVAL_THRESHOLD", "0.75")) # for SAFE decision
+
+W_AUC = float(os.getenv("W_AUC", "0.4"))
+W_FAIR = float(os.getenv("W_FAIR", "0.4"))
+W_ROB = float(os.getenv("W_ROB", "0.2"))
+
+# normalize weights so sum=1
+w_sum = W_AUC + W_FAIR + W_ROB
+if w_sum <= 0:
+    raise ValueError("Weights must sum to > 0")
+W_AUC, W_FAIR, W_ROB = W_AUC / w_sum, W_FAIR / w_sum, W_ROB / w_sum
+
+SENSITIVE_FEATURE = os.getenv("SENSITIVE_FEATURE", "personal_status")  # or foreign_worker
+DROP_SENSITIVE_FROM_MODEL = os.getenv("DROP_SENSITIVE_FROM_MODEL", "0") == "1"
+
 # --- DATA LOADER ---
 
 def get_credit_data():
-    """Fetches and prepares the German Credit data (OpenML ID 31)."""
+    """
+    If DATA_PATH is set, use that CSV.
+    Otherwise fetch OpenML dataset OPENML_ID and save to raw_credit_data.csv.
+    """
     try:
-        dataset = openml.datasets.get_dataset(31)
-        # Get data and target variable
+        if DATA_PATH:
+            # Use user-provided CSV
+            df = pd.read_csv(DATA_PATH)
+            df.to_csv("raw_credit_data.csv", index=False)
+            return "raw_credit_data.csv"
+
+        dataset = openml.datasets.get_dataset(OPENML_ID)
         X, y, _, _ = dataset.get_data(
-            dataset_format="dataframe", target=dataset.default_target_attribute
+            dataset_format="dataframe",
+            target=dataset.default_target_attribute
         )
-        # Convert target variable to 0 (Good) and 1 (Bad) for modeling
-        y = y.apply(lambda x: 1 if x == 'bad' else 0) 
+
+        # German Credit mapping (good/bad)
+        y = y.apply(lambda x: 1 if x == 'bad' else 0)
+
         data = pd.concat([X, y.rename('CreditRisk')], axis=1)
-        
-        # Save the initial raw data for the DataAgent to process
         data.to_csv("raw_credit_data.csv", index=False)
         return "raw_credit_data.csv"
+
     except Exception as e:
         return f"Error loading data: {e}"
-
 RAW_DATA_PATH = get_credit_data()
 
 @tool
@@ -76,6 +105,20 @@ def data_preprocessing_tool(file_path: str):
             X, y, test_size=0.2, random_state=42, stratify=y
         )
         
+        # ---- Save sensitive feature for fairness evaluation ----
+        if SENSITIVE_FEATURE in X_train.columns:
+            X_train[[SENSITIVE_FEATURE]].to_csv("sensitive_train.csv", index=False)
+            X_test[[SENSITIVE_FEATURE]].to_csv("sensitive_test.csv", index=False)
+        else:
+            # fallback so evaluation doesn't crash
+            pd.DataFrame({"group": ["UNKNOWN"] * len(X_train)}).to_csv("sensitive_train.csv", index=False)
+            pd.DataFrame({"group": ["UNKNOWN"] * len(X_test)}).to_csv("sensitive_test.csv", index=False)
+
+        # ---- Optionally drop sensitive from model features (still kept for audit) ----
+        if DROP_SENSITIVE_FROM_MODEL and (SENSITIVE_FEATURE in X_train.columns):
+            X_train = X_train.drop(columns=[SENSITIVE_FEATURE])
+            X_test = X_test.drop(columns=[SENSITIVE_FEATURE])
+
         # 6. Apply preprocessing
         X_train_processed = preprocessor.fit_transform(X_train)
         X_test_processed = preprocessor.transform(X_test)
@@ -99,8 +142,16 @@ def data_preprocessing_tool(file_path: str):
         y_test.to_csv("clean_test_target.csv", index=False, header=['CreditRisk'])
 
         # 9. Update the datacard (without extra characters to prevent Permission Error)
-        with open('datacard.json', 'w') as f: 
-             f.write(f'{{"status": "CLEANED", "features": {len(clean_feature_names)}}}')
+        import json
+        datacard = {
+            "status": "CLEANED",
+            "features_after_encoding": int(len(clean_feature_names)),
+            "numeric_features_raw": list(map(str, numerical_features)),
+            "sensitive_feature": SENSITIVE_FEATURE,
+            "drop_sensitive_from_model": bool(DROP_SENSITIVE_FROM_MODEL)
+        }
+        with open("datacard.json", "w", encoding="utf-8") as f:
+            json.dump(datacard, f, indent=2)
 
         return "Data successfully processed, feature names cleaned for XGBoost, and datasets saved."
         
@@ -152,9 +203,49 @@ def evaluation_and_risk_tool(description: str):
         y_probs = model.predict_proba(X_test)[:, 1]
         auc_score = metrics.roc_auc_score(y_test, y_probs)
         
-        # 2. Simulate robustness and fairness scores
-        robustness_score = 0.85 
-        fairness_score = 0.72  
+      # ---- REAL FAIRNESS (simple gaps) ----
+        s_df = pd.read_csv("sensitive_test.csv")
+        group = s_df.iloc[:, 0].astype(str).fillna("NA")
+
+        # predictions
+        pred_thr = PRED_THRESHOLD
+        y_pred = (y_probs >= pred_thr).astype(int)
+
+        tmp = pd.DataFrame({"y_true": y_test, "y_pred": y_pred, "group": group})
+
+        # Statistical parity (positive rate gap)
+        pos_rates = tmp.groupby("group")["y_pred"].mean()
+        spd_gap = float(pos_rates.max() - pos_rates.min()) if len(pos_rates) > 1 else 0.0
+
+        # Equal opportunity (TPR gap)
+        def tpr(df):
+            tp = ((df.y_pred == 1) & (df.y_true == 1)).sum()
+            fn = ((df.y_pred == 0) & (df.y_true == 1)).sum()
+            return tp / (tp + fn) if (tp + fn) else 0.0
+
+        tprs = tmp.groupby("group").apply(tpr)
+        eod_gap = float(tprs.max() - tprs.min()) if len(tprs) > 1 else 0.0
+
+        fairness_gap = 0.5 * (spd_gap + eod_gap)
+        fairness_score = float(np.clip(1.0 - fairness_gap, 0.0, 1.0))
+
+        # ---- REAL ROBUSTNESS (noise test on numeric processed columns) ----
+        # numeric columns in processed data are the original numeric feature names
+        import json
+        with open("datacard.json", "r", encoding="utf-8") as f:
+            dc = json.load(f)
+
+        num_cols = [c for c in dc.get("numeric_features_raw", []) if c in X_test.columns]
+
+        X_noisy = X_test.copy()
+        if num_cols:
+            noise = np.random.normal(0.0, 0.10, size=(len(X_noisy), len(num_cols)))
+            X_noisy.loc[:, num_cols] = X_noisy.loc[:, num_cols].values + noise
+
+        auc_noisy = metrics.roc_auc_score(y_test, model.predict_proba(X_noisy)[:, 1])
+        robustness_score = float(np.clip(auc_noisy / auc_score, 0.0, 1.0)) if auc_score > 0 else 0.0
+
+        
         report_content = f"""### Detailed SAFE AI Evaluation Report
 - **Accuracy (AUC)**: {auc_score:.2f}
 - **Robustness Score**: {robustness_score}
@@ -165,7 +256,46 @@ def evaluation_and_risk_tool(description: str):
         with open('evaluation_report.md', 'w') as f:
             f.write(report_content)
 
+        # ---- LONG, HUMAN-READABLE REPORT ----
+        group_table = tmp.groupby("group").agg(
+            n=("y_true", "count"),
+            positive_rate=("y_pred", "mean"),
+            tpr=("y_true", lambda s: tpr(tmp.loc[s.index]))
+        ).reset_index()
+
+        final_report = f"""# Final SAFE Agentic Credit Scoring Report
+
+## User Controls
+- Data source: {"CSV (" + str(DATA_PATH) + ")" if DATA_PATH else "OpenML (" + str(OPENML_ID) + ")"}
+- Prediction threshold: {PRED_THRESHOLD}
+- Approval threshold: {APPROVAL_THRESHOLD}
+- Weights: AUC={W_AUC:.3f}, Fairness={W_FAIR:.3f}, Robustness={W_ROB:.3f}
+- Sensitive feature: {SENSITIVE_FEATURE}
+
+## Accuracy
+- AUC: {auc_score:.4f}
+
+## Robustness (Noise Stress Test)
+- Robustness score (AUC_noisy / AUC_base): {robustness_score:.4f}
+
+## Fairness (Group Gaps)
+- SPD gap (max-min positive rate): {spd_gap:.4f}
+- EOD gap (max-min TPR): {eod_gap:.4f}
+- Fairness score (1 - avg gap): {fairness_score:.4f}
+
+### Group Table
+{group_table.to_markdown(index=False)}
+
+## Auditor Notes
+- If fairness score is low: consider threshold tuning or mitigation techniques.
+- If robustness score is low: test more perturbations/shifts.
+"""
+
+        with open("final_report.md", "w", encoding="utf-8") as f:
+            f.write(final_report)
+
         return report_content
+
     except Exception as e:
         return f"EVALUATION FAILED: {e}"
     
@@ -182,16 +312,16 @@ def governance_scoring_tool(description: str):
             m = re.search(pattern, text)
             return float(m.group(1)) if m else None
 
-        auc = extract_float(r"Accuracy \(AUC\)\*\*:\s*([0-9]*\.?[0-9]+)", rep)
-        rob = extract_float(r"Robustness Score\*\*:\s*([0-9]*\.?[0-9]+)", rep)
-        fair = extract_float(r"Fairness Score\*\*:\s*([0-9]*\.?[0-9]+)", rep)
+        auc  = extract_float(r"\*\*Accuracy \(AUC\)\*\*:\s*([0-9]*\.?[0-9]+)", rep)
+        rob  = extract_float(r"\*\*Robustness Score\*\*:\s*([0-9]*\.?[0-9]+)", rep)
+        fair = extract_float(r"\*\*Fairness Score\*\*:\s*([0-9]*\.?[0-9]+)", rep)
 
         if auc is None or rob is None or fair is None:
             return "REJECTED: Could not parse AUC/Robustness/Fairness from evaluation_report.md."
 
-        w_auc, w_fair, w_rob = 0.4, 0.4, 0.2
+        w_auc, w_fair, w_rob = W_AUC, W_FAIR, W_ROB
         final_score = (w_auc * auc) + (w_fair * fair) + (w_rob * rob)
-        decision = "APPROVED" if final_score > 0.75 else "REJECTED"
+        decision = "APPROVED" if final_score > APPROVAL_THRESHOLD else "REJECTED"
 
         system_card = f"""# System Card — SAFE Agentic Credit Scoring
 

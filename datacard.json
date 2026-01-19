@@ -1,1 +1,15 @@
-{"status": "CLEANED", "features": 61}
+{
+  "status": "CLEANED",
+  "features_after_encoding": 61,
+  "numeric_features_raw": [
+    "duration",
+    "credit_amount",
+    "installment_commitment",
+    "residence_since",
+    "age",
+    "existing_credits",
+    "num_dependents"
+  ],
+  "sensitive_feature": "personal_status",
+  "drop_sensitive_from_model": false
+}
