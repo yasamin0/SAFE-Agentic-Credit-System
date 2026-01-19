@@ -58,9 +58,14 @@ def data_preprocessing_tool(file_path: str):
         categorical_features = X.select_dtypes(include=['object']).columns
 
         # 4. Build the data transformer
+        try:
+            ohe = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+        except TypeError:
+            ohe = OneHotEncoder(handle_unknown='ignore', sparse=False)
+
         preprocessor = ColumnTransformer(
             transformers=[
-                ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features),
+                ('cat', ohe, categorical_features),
                 ('num', StandardScaler(), numerical_features)
             ],
             remainder='passthrough'
@@ -163,6 +168,57 @@ def evaluation_and_risk_tool(description: str):
         return report_content
     except Exception as e:
         return f"EVALUATION FAILED: {e}"
+    
+@tool
+def governance_scoring_tool(description: str):
+    """Computes weighted SAFE score from evaluation_report.md and writes system_card.md."""
+    try:
+        import re
+
+        with open("evaluation_report.md", "r", encoding="utf-8") as f:
+            rep = f.read()
+
+        def extract_float(pattern, text):
+            m = re.search(pattern, text)
+            return float(m.group(1)) if m else None
+
+        auc = extract_float(r"Accuracy \(AUC\)\*\*:\s*([0-9]*\.?[0-9]+)", rep)
+        rob = extract_float(r"Robustness Score\*\*:\s*([0-9]*\.?[0-9]+)", rep)
+        fair = extract_float(r"Fairness Score\*\*:\s*([0-9]*\.?[0-9]+)", rep)
+
+        if auc is None or rob is None or fair is None:
+            return "REJECTED: Could not parse AUC/Robustness/Fairness from evaluation_report.md."
+
+        w_auc, w_fair, w_rob = 0.4, 0.4, 0.2
+        final_score = (w_auc * auc) + (w_fair * fair) + (w_rob * rob)
+        decision = "APPROVED" if final_score > 0.75 else "REJECTED"
+
+        system_card = f"""# System Card — SAFE Agentic Credit Scoring
+
+## Decision
+**{decision}**
+
+## Final SAFE Score
+**{final_score:.3f}**  
+(Weights: AUC={w_auc}, Fairness={w_fair}, Robustness={w_rob})
+
+## Metrics Used
+- AUC: {auc:.3f}
+- Fairness: {fair:.3f}
+- Robustness: {rob:.3f}
+
+## Rationale
+The final SAFE score balances predictive performance with fairness and robustness.
+"""
+
+        with open("system_card.md", "w", encoding="utf-8") as f:
+            f.write(system_card)
+
+        return f"{decision}: SAFE Score={final_score:.3f}. System Card saved to system_card.md."
+
+    except Exception as e:
+        return f"GOVERNANCE FAILED: {e}"
+
 # 1. Data Agent
 data_agent = Agent(
     role='Data Preprocessor and Feature Engineer',
@@ -200,29 +256,22 @@ eval_agent = Agent(
     verbose=True
 )
 
-# 4. Safety Agent
+# 4. Safety Agent- Unified Safety Agent (SAFE Score + Governance/Compliance) ---
 safety_agent = Agent(
-    role='SAFE AI Governance Officer',
-    goal='Apply weighted importance to AI principles (Accuracy: 40%, Fairness: 40%, Robustness: 20%) to calculate a final SAFE Score.',
-    backstory=(
-        "You are the final decision-maker. Based on the paper 'Towards SAFE AI', "
-        "you don't just look at accuracy. You calculate a FINAL SCORE using weights: "
-        "Score = (AUC * 0.4) + (Fairness * 0.4) + (Robustness * 0.2). "
-        "If the Final Score is > 0.75, you approve. Otherwise, you reject with a detailed reasoning."
+    role='SAFE AI Governance & Compliance Officer',
+    goal=(
+        "1) Compute a weighted SAFE Score from the evaluation report. "
+        "2) Perform governance/compliance checks (no PII leakage, artifacts exist, reproducibility). "
+        "3) Approve/Reject with a detailed, human-readable System Card."
     ),
-    allow_delegation=True, 
-    verbose=True
-)
-# 4. Safety Agent
-safety_agent = Agent(
-    role='Governance and Compliance Officer',
-    goal='Enforce all data and model guardrails, check for PII, verify compliance with the risk report, and determine if the model should be signed off for release.',
     backstory=(
-        "The gatekeeper of the AI pipeline. Their approval is mandatory for model deployment. "
-        "They consolidate all artifacts and check for potential legal or ethical violations."
+        "You are the gatekeeper of the pipeline. You consolidate artifacts from Data/Model/Eval, "
+        "verify basic compliance (no raw PII, files exist, clear reporting), then compute the FINAL SAFE SCORE "
+        "using weights selected by the user/policy: Score = 0.4*AUC + 0.4*Fairness + 0.2*Robustness. "
+        "If Score > 0.75 approve; otherwise reject and recommend mitigations."
     ),
-    # This Agent relies on the reports from others, no new tools needed for final governance check
-    allow_delegation=True, 
+    tools=[governance_scoring_tool],
+    allow_delegation=True,
     verbose=True
 )
 
@@ -231,8 +280,11 @@ safety_agent = Agent(
 
 # T1: Data Preparation
 task_data_prep = Task(
-    description=f"Load data from {RAW_DATA_PATH}, clean it using the data_preprocessing_tool, and output the status of the 'clean_train.csv' and 'clean_test.csv' files.",
-    expected_output="A summary confirming data cleanliness, encoding methods used, and the path to the split datasets.",
+    description=(
+        f"Load data from {RAW_DATA_PATH}, clean it using data_preprocessing_tool, and confirm creation of "
+        "clean_train_features.csv, clean_train_target.csv, clean_test_features.csv, clean_test_target.csv."
+    ),
+    expected_output="A summary confirming preprocessing, encoding, scaling, and the paths to the split datasets.",
     agent=data_agent,
 )
 
@@ -254,14 +306,8 @@ task_full_eval = Task(
 
 # T4: Governance Sign-off
 task_governance = Task(
-    description=(
-        "Review the Detailed Evaluation Report. Calculate the weighted SAFE Score. "
-        "Generate a comprehensive System Card that includes: "
-        "1. Decision (Approved/Rejected) "
-        "2. Final SAFE Score "
-        "3. A human-readable explanation of the trade-offs between accuracy and fairness."
-    ),
-    expected_output="A professional System Card artifact following the SAFE AI framework, explaining the weighted decision logic.",
+    description="Run governance_scoring_tool to compute the weighted SAFE Score from evaluation_report.md and generate system_card.md with Approved/Rejected decision and reasoning.",
+    expected_output="system_card.md containing decision + final SAFE score.",
     agent=safety_agent,
     context=[task_full_eval]
 )
@@ -281,8 +327,6 @@ if __name__ == "__main__":
     
     # Kick off the process!
     final_result = safe_agent_crew.kickoff()
-    with open('system_card.md', 'w', encoding='utf-8') as f:
-        f.write(str(final_result))
     
     print("\n\n################################################")
     print("## FINISHED! FINAL GOVERNANCE DECISION: ##")
