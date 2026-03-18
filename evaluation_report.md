@@ -1,5 +1,14 @@
 ### Detailed SAFE AI Evaluation Report
-- **Accuracy (AUC)**: 0.78
-- **Robustness Score**: 0.9789377289377289
-- **Fairness Score**: 0.6527777777777778
-- **Status**: Metrics extracted for weighting.
+- **Accuracy (AUC)**: 0.7800
+- **Fairness Aggregate**: 0.5399
+- **Robustness Aggregate**: 0.9636
+- **Baseline SAFE Score**: 0.6967
+- **Ensemble Auditing Enabled**: True
+- **Auditors Used**: performance_auditor, fairness_auditor, robustness_auditor
+- **Mitigated AUC**: 0.6762
+- **Mitigated Fairness Aggregate**: 0.5399
+- **Mitigated SAFE Score**: 0.6655
+- **Fairness Components**: SPD=0.6389, EOD=0.6667, AOD=0.6667, DIR=0.1875
+- **Robustness Components**: Noise=0.9966, Dropout=0.8941, Missingness=1.0000
+- **Mitigation Applied To Group**: male mar/wid
+- **Status**: Metrics extracted for weighting, mitigation, sensitivity analysis, and explainability.

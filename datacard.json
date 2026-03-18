@@ -10,6 +10,45 @@
     "existing_credits",
     "num_dependents"
   ],
+  "categorical_features_raw": [
+    "checking_status",
+    "credit_history",
+    "purpose",
+    "savings_status",
+    "employment",
+    "personal_status",
+    "other_parties",
+    "property_magnitude",
+    "other_payment_plans",
+    "housing",
+    "job",
+    "own_telephone",
+    "foreign_worker"
+  ],
   "sensitive_feature": "personal_status",
-  "drop_sensitive_from_model": false
+  "drop_sensitive_from_model": false,
+  "config": {
+    "data_source": "CSV (raw_credit_data.csv)",
+    "prediction_threshold": 0.55,
+    "approval_threshold": 0.75,
+    "weights": {
+      "auc": 0.3,
+      "fairness": 0.5,
+      "robustness": 0.2
+    },
+    "sensitive_feature": "personal_status",
+    "alternative_sensitive_features": [
+      "foreign_worker",
+      "sex",
+      "age"
+    ],
+    "drop_sensitive_from_model": false,
+    "random_state": 42,
+    "robustness_settings": {
+      "noise_std": 0.1,
+      "dropout_rate": 0.1,
+      "missing_rate": 0.1
+    },
+    "decision_rule": "APPROVED if SAFE_SCORE >= APPROVAL_THRESHOLD else REJECTED, where SAFE_SCORE = W_AUC*AUC + W_FAIR*FAIRNESS_AGG + W_ROB*ROBUSTNESS_AGG"
+  }
 }
