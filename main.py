@@ -5,7 +5,7 @@ import pandas as pd
 import openml
 import json
 import numpy as np 
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 from crewai.tools import tool
 import joblib 
 from xgboost import XGBClassifier
@@ -216,6 +216,7 @@ def _compute_robustness_metrics(model, X_test, y_test, numeric_cols):
     ])
     scores["base_auc"] = float(base_auc)
     return scores
+
 def _performance_auditor(auc_score):
     return {
         "auditor": "performance_auditor",
@@ -393,6 +394,7 @@ def _sensitivity_analysis(model, X_test, y_test, config, numeric_cols):
     sens_df["delta_vs_base"] = sens_df["safe_score"] - float(sens_df.loc[sens_df["scenario"] == "base", "safe_score"].iloc[0])
     sens_df = sens_df.sort_values(["safe_score", "scenario"], ascending=[False, True]).reset_index(drop=True)
     return sens_df
+
 def _interaction_analysis(model, X_test, y_test, config, numeric_cols):
     y_probs = model.predict_proba(X_test)[:, 1]
     group = pd.read_csv("sensitive_test.csv").iloc[:, 0].astype(str).fillna("NA")
@@ -479,6 +481,7 @@ def _interaction_analysis(model, X_test, y_test, config, numeric_cols):
 # Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv() 
+crew_llm = LLM(model="gpt-4o")
 
 # --- USER CONFIG (via .env or environment variables) ---
 DATA_PATH = os.getenv("DATA_PATH", "").strip() or None   # e.g. raw_credit_data.csv
@@ -929,6 +932,202 @@ The final SAFE score balances predictive performance with multi-metric fairness 
     except Exception as e:
         return f"GOVERNANCE FAILED: {e}"
 
+# --- CHATBOT HELPER FUNCTIONS ---
+
+def _safe_read_text(path):
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return f.read()
+    return ''
+
+
+def _safe_read_json(path):
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+
+def _extract_markdown_metric(text, label):
+    import re
+    safe_label = re.escape(label)
+    patterns = [
+        rf"- \*\*{safe_label}\*\*:\s*([^\n]+)",
+        rf"- {safe_label}:\s*([^\n]+)",
+        rf"\*\*{safe_label}\*\*\s*\n\s*\*\*([^\n]+)\*\*",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
+
+def _extract_top_features(report_text, k=5):
+    lines = report_text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if 'Top 10 most important processed features:' in line:
+            start = i + 2
+            break
+    if start is None:
+        return []
+
+    rows = []
+    for line in lines[start:]:
+        if not line.strip().startswith('|'):
+            break
+        if '---' in line or 'feature' in line.lower():
+            continue
+        parts = [x.strip() for x in line.strip().strip('|').split('|')]
+        if len(parts) >= 2:
+            rows.append((parts[0], parts[1]))
+        if len(rows) >= k:
+            break
+    return rows
+
+
+def build_chatbot_context():
+    config = _safe_read_json('datacard.json').get('config', current_config())
+    system_card = _safe_read_text('system_card.md')
+    evaluation_report = _safe_read_text('evaluation_report.md')
+    final_report = _safe_read_text('final_report.md')
+    sensitivity_report = _safe_read_text('sensitivity_report.md')
+    model_card = _safe_read_text('model_card.md')
+
+    return {
+        'config': config,
+        'system_card': system_card,
+        'evaluation_report': evaluation_report,
+        'final_report': final_report,
+        'sensitivity_report': sensitivity_report,
+        'model_card': model_card,
+        'decision': _extract_markdown_metric(system_card, 'Decision'),
+        'final_safe_score': _extract_markdown_metric(system_card, 'Final SAFE Score'),
+        'auc': _extract_markdown_metric(evaluation_report, 'Accuracy (AUC)'),
+        'fairness_aggregate': _extract_markdown_metric(evaluation_report, 'Fairness Aggregate'),
+        'robustness_aggregate': _extract_markdown_metric(evaluation_report, 'Robustness Aggregate'),
+        'mitigated_safe_score': _extract_markdown_metric(evaluation_report, 'Mitigated SAFE Score'),
+        'mitigated_auc': _extract_markdown_metric(evaluation_report, 'Mitigated AUC'),
+        'top_features': _extract_top_features(final_report, k=5),
+    }
+
+# --- CHATBOT TOOL ---
+@tool
+def safe_chatbot_tool(query: str):
+    """Answers user questions about the SAFE credit scoring run using generated artifacts such as system_card.md, final_report.md, evaluation_report.md, and datacard.json."""
+    try:
+        ctx = build_chatbot_context()
+        q = (query or '').strip().lower()
+
+        required_files = ['system_card.md', 'evaluation_report.md', 'final_report.md']
+        missing = [f for f in required_files if not os.path.exists(f)]
+        if missing:
+            return (
+                'CHATBOT ERROR: Missing required artifacts: ' + ', '.join(missing) + '. '
+                'Run the full pipeline first so the chatbot can answer grounded questions.'
+            )
+
+        if any(x in q for x in ['hello', 'hi', 'hey', 'start', 'help']):
+            return (
+                'SAFE chatbot is ready. You can ask about the final decision, SAFE score, AUC, fairness, '
+                'robustness, mitigation, configuration, sensitivity analysis, or top features.'
+            )
+
+        if any(x in q for x in ['decision', 'approved', 'rejected', 'governance']):
+            return (
+                f"Final governance decision: {ctx['decision']}. "
+                f"Final SAFE score: {ctx['final_safe_score']}."
+            )
+
+        if 'safe score' in q or 'final score' in q:
+            return (
+                f"Final SAFE score: {ctx['final_safe_score']}. "
+                f"Mitigated SAFE score: {ctx['mitigated_safe_score']}."
+            )
+
+        if 'auc' in q or 'accuracy' in q or 'performance' in q:
+            return (
+                f"AUC: {ctx['auc']}. "
+                f"Mitigated AUC: {ctx['mitigated_auc']}."
+            )
+
+        if 'fairness' in q:
+            return (
+                f"Fairness aggregate: {ctx['fairness_aggregate']}. "
+                'For more detail, check final_report.md for SPD, EOD, AOD, and DIR breakdown.'
+            )
+
+        if 'robust' in q:
+            return (
+                f"Robustness aggregate: {ctx['robustness_aggregate']}. "
+                'The robustness report is based on noise, dropout, and missingness stress tests.'
+            )
+
+        if any(x in q for x in ['mitigation', 'mitigated', 'post-mitigation']):
+            return (
+                f"Mitigated SAFE score: {ctx['mitigated_safe_score']}. "
+                f"Mitigated AUC: {ctx['mitigated_auc']}. "
+                'The mitigation used here is group-aware threshold adjustment.'
+            )
+
+        if any(x in q for x in ['config', 'settings', 'threshold', 'weights', 'sensitive feature']):
+            cfg = ctx['config']
+            return (
+                'Current configuration: '
+                f"prediction_threshold={cfg.get('prediction_threshold')}, "
+                f"approval_threshold={cfg.get('approval_threshold')}, "
+                f"weights={cfg.get('weights')}, "
+                f"sensitive_feature={cfg.get('sensitive_feature')}, "
+                f"drop_sensitive_from_model={cfg.get('drop_sensitive_from_model')}."
+            )
+
+        if any(x in q for x in ['feature importance', 'top features', 'important features', 'explainability']):
+            if not ctx['top_features']:
+                return 'No feature-importance summary was found in final_report.md.'
+            formatted = ', '.join([f"{name} ({imp})" for name, imp in ctx['top_features']])
+            return f"Top processed features from the report: {formatted}."
+
+        if any(x in q for x in ['sensitivity', 'interaction', 'effects']):
+            return (
+                'Sensitivity and interaction analysis were generated. '
+                'See sensitivity_report.md for scenario comparisons, main effects, and pairwise interactions.'
+            )
+
+        return (
+            'I can answer grounded questions about this SAFE run. '
+            'Try asking: What is the final decision? What is the SAFE score? '
+            'How fair is the model? How robust is it? What mitigation was applied? '
+            'What are the top features?'
+        )
+    except Exception as e:
+        return f'CHATBOT FAILED: {e}'
+
+# --- CHATBOT CLI INTERFACE ---
+
+def run_safe_chatbot_cli():
+    print("\n--- SAFE Chatbot ---")
+    print('Ask about the final decision, SAFE score, fairness, robustness, mitigation, config, or top features.')
+    print("Type 'exit' to stop.\n")
+
+    while True:
+        try:
+            user_query = input('SAFE Chatbot > ').strip()
+        except (EOFError, KeyboardInterrupt):
+            print('\nExiting SAFE Chatbot.')
+            break
+
+        if user_query.lower() in {'exit', 'quit', 'q'}:
+            print('Exiting SAFE Chatbot.')
+            break
+
+        if not user_query:
+            continue
+
+        answer = safe_chatbot_tool.run(user_query)
+        print(f'\n{answer}\n')
+
+# --- AGENTS DEFINITION ---
+
 # 1. Data Agent
 data_agent = Agent(
     role='Data Preprocessor and Feature Engineer',
@@ -938,7 +1137,8 @@ data_agent = Agent(
         "data leakage and ensuring data quality before any modeling starts. "
         "Their primary focus is on maximizing fairness and robustness in the downstream model."
     ),
-    tools=[data_preprocessing_tool], # DataAgent uses the preprocessing tool
+    tools=[data_preprocessing_tool],  # DataAgent uses the preprocessing tool
+    llm=crew_llm,
     allow_delegation=False,
     verbose=True
 )
@@ -952,7 +1152,8 @@ modeling_agent = Agent(
         "They utilize state-of-the-art libraries to perform hyperparameter tuning "
         "and establish strong performance baselines."
     ),
-    tools=[model_training_tool], # ModelingAgent uses the training tool
+    tools=[model_training_tool],  # ModelingAgent uses the training tool
+    llm=crew_llm,
     allow_delegation=False,
     verbose=True
 )
@@ -963,6 +1164,7 @@ eval_agent = Agent(
     goal='Evaluate the model against Accuracy, Robustness, and Fairness metrics.',
     backstory='A specialized auditor using the SAFE AI framework to stress test models.',
     tools=[evaluation_and_risk_tool],
+    llm=crew_llm,
     allow_delegation=False,
     verbose=True
 )
@@ -980,10 +1182,25 @@ safety_agent = Agent(
         "verify basic compliance (no raw PII, files exist, clear reporting), then compute the FINAL SAFE SCORE."
     ),
     tools=[governance_scoring_tool],
+    llm=crew_llm,
     allow_delegation=False,
     verbose=True
 )
 
+# 5. Chatbot Agent
+
+chatbot_agent = Agent(
+    role='SAFE Results Chatbot',
+    goal='Answer user questions about the finished SAFE pipeline run using generated reports and configuration artifacts.',
+    backstory=(
+        'A lightweight assistant that only answers from the generated SAFE artifacts. '
+        'It explains results, configuration, mitigation, and feature-importance findings in plain language.'
+    ),
+    tools=[safe_chatbot_tool],
+    llm=crew_llm,
+    allow_delegation=False,
+    verbose=True
+)
 
 # --- TASKS DEFINITION (The Execution Flow) ---
 
@@ -1029,14 +1246,26 @@ task_governance = Task(
     agent=safety_agent,
     context=[task_full_eval]
 )
-# --- CREW LAUNCHER ---
+
+# T5: Chatbot Readiness + User Q&A
+task_chatbot = Task(
+    description=(
+        "You MUST call safe_chatbot_tool exactly once with a short readiness query such as 'help'. "
+        "Do not invent results. Confirm the chatbot is ready to answer grounded questions from the generated artifacts."
+    ),
+    expected_output="A short readiness message from the chatbot confirming supported question types.",
+    agent=chatbot_agent,
+    context=[task_governance]
+)
+
+# --- CREW LAUNCHER / MAIN EXECUTION ---
 
 if __name__ == "__main__":
     # Create the Crew
     safe_agent_crew = Crew(
-        agents=[data_agent, modeling_agent, eval_agent, safety_agent],
-        tasks=[task_data_prep, task_model_train, task_full_eval, task_governance],
-        process=Process.sequential, # Tasks run in sequence: T1 -> T2 -> T3 -> T4
+        agents=[data_agent, modeling_agent, eval_agent, safety_agent, chatbot_agent],
+        tasks=[task_data_prep, task_model_train, task_full_eval, task_governance, task_chatbot],
+        process=Process.sequential,
         verbose=True 
     )
 
@@ -1050,5 +1279,6 @@ if __name__ == "__main__":
     print("################################################")
     print(final_result)
     print("\n[SUCCESS] System Card saved to 'system_card.md'")
-
+    print("\n[SUCCESS] SAFE chatbot is ready.")
+    run_safe_chatbot_cli()
     
