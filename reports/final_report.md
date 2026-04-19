@@ -1,7 +1,7 @@
 # Final SAFE Agentic Credit Scoring Report
 
 ## User Controls
-- Data source: CSV (raw_credit_data.csv)
+- Data source: CSV (data/raw/raw_credit_data.csv)
 - Prediction threshold: 0.55
 - Approval threshold: 0.75
 - Weights: AUC=0.300, Fairness=0.500, Robustness=0.200
@@ -87,7 +87,7 @@ Top pairwise interactions:
 |:---------------------|:-------------------|-----------------------:|
 | prediction_threshold | w_fair             |            0.00144965  |
 | prediction_threshold | w_rob              |            1.11022e-16 |
-| w_fair               | w_rob              |            8.63507e-17 |
+| w_fair               | w_rob              |            4.93432e-17 |
 | prediction_threshold | approval_threshold |            2.77556e-17 |
 | approval_threshold   | w_fair             |            0           |
 | approval_threshold   | w_rob              |            0           |

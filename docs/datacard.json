@@ -28,7 +28,7 @@
   "sensitive_feature": "personal_status",
   "drop_sensitive_from_model": false,
   "config": {
-    "data_source": "CSV (raw_credit_data.csv)",
+    "data_source": "CSV (data/raw/raw_credit_data.csv)",
     "prediction_threshold": 0.55,
     "approval_threshold": 0.75,
     "weights": {
