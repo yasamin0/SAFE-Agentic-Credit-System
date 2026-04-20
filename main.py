@@ -9,6 +9,8 @@ from src.reporting import governance_scoring_tool
 from src.chatbot import safe_chatbot_tool, run_safe_chatbot_cli
 from src.paths import CHATBOT_LOG_PATH
 
+import subprocess
+import sys
 
 ensure_directories()
 RAW_DATA_PATH = get_credit_data()
@@ -147,9 +149,6 @@ if __name__ == "__main__":
     print("################################################")
     print(final_result)
     print("\n[SUCCESS] System Card saved.")
-    print("\n[SUCCESS] SAFE chatbot is ready.")
+    print("\n[SUCCESS] Launching standalone SAFE chatbot...")
 
-    with open(CHATBOT_LOG_PATH, "w", encoding="utf-8") as f:
-        f.write("# SAFE Chatbot Conversation Log\n\n")
-
-    run_safe_chatbot_cli()
+    subprocess.run([sys.executable, "-m", "src.chat_cli"])
