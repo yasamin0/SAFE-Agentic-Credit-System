@@ -108,6 +108,17 @@ SENSITIVITY_REPORT_PATH = REPORTS_DIR / "sensitivity_report.md"
 # Markdown log of chatbot conversations
 CHATBOT_LOG_PATH = REPORTS_DIR / "chatbot_log.md"
 
+# ------------------------------------------------------------
+# RGR / RANK-BASED ROBUSTNESS ARTIFACT PATHS
+# ------------------------------------------------------------
+
+RGR_GAUSSIAN_CSV_PATH = REPORTS_DIR / "rgr_gaussian_curve.csv"
+RGR_SWAPPING_CSV_PATH = REPORTS_DIR / "rgr_swapping_curve.csv"
+
+RGR_GAUSSIAN_PLOT_PATH = REPORTS_DIR / "rgr_gaussian_curve.png"
+RGR_SWAPPING_PLOT_PATH = REPORTS_DIR / "rgr_swapping_curve.png"
+
+RGR_REPORT_PATH = REPORTS_DIR / "rgr_report.md"
 
 def ensure_directories():
     """

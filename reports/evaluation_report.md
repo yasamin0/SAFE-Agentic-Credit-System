@@ -10,5 +10,10 @@
 - **Mitigated SAFE Score**: 0.6655
 - **Fairness Components**: SPD=0.6389, EOD=0.6667, AOD=0.6667, DIR=0.1875
 - **Robustness Components**: Noise=0.9966, Dropout=0.8941, Missingness=1.0000
+- **AURGR Gaussian Noise**: 0.9664
+- **AURGR Percentile Swapping**: 0.8162
+- **RGR Aggregate**: 0.8913
+- **RGR Curve Files**: rgr_gaussian_curve.csv, rgr_swapping_curve.csv
+- **RGR Plot Files**: rgr_gaussian_curve.png, rgr_swapping_curve.png
 - **Mitigation Applied To Group**: male mar/wid
 - **Status**: Metrics extracted for weighting, mitigation, sensitivity analysis, and explainability.

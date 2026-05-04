@@ -37,7 +37,8 @@ from src.fairness import (
     _compute_fairness_metrics,
 )
 
-# Centralized paths for model/data/report artifacts
+# Centralized paths for model/data/report artifacts.
+# plots, and markdown report can be saved inside the reports folder.
 from src.paths import (
     MODEL_PATH,
     TEST_FEATURES_PATH,
@@ -48,11 +49,22 @@ from src.paths import (
     EVALUATION_REPORT_PATH,
     FINAL_REPORT_PATH,
     SENSITIVITY_REPORT_PATH,
+
+    # RGR artifact paths
+    RGR_GAUSSIAN_CSV_PATH,
+    RGR_SWAPPING_CSV_PATH,
+    RGR_GAUSSIAN_PLOT_PATH,
+    RGR_SWAPPING_PLOT_PATH,
+    RGR_REPORT_PATH,
 )
 
 # Utility helpers
 from src.utils import _read_target_series, _safe_mean
 
+# RGR utilities:
+# - compute_rgr_curve creates the RGR curve and computes AURGR.
+# - save_rgr_plot saves the RGR curve as a PNG plot.
+from src.rgr import compute_rgr_curve, save_rgr_plot
 
 def _compute_robustness_metrics(model, X_test, y_test, numeric_cols):
     """
@@ -551,6 +563,100 @@ def evaluation_and_risk_tool(description: str):
         )
 
         # ------------------------------------------------------------
+        # RANK-BASED ROBUSTNESS: RGR / AURGR
+        # ------------------------------------------------------------
+        # This implements the paper-style robustness analysis.
+        #
+        # Difference from the old robustness metrics:
+        # - Old robustness:
+        #   compares AUC before and after simple perturbations.
+        #
+        # - New RGR robustness:
+        #   compares the ranking of predictions before and after perturbations.
+        #
+        # We compute two RGR curves:
+        # 1. Gaussian noise curve
+        # 2. Percentile swapping curve
+        #
+        # For each curve:
+        # - perturbation intensity increases step by step
+        # - predictions are recomputed
+        # - ranking stability is measured
+        # - AURGR is computed as the area under the curve
+
+        # Choose which columns should be perturbed.
+        # Prefer numeric columns from the datacard.
+        # If numeric_cols is empty, fall back to all processed features.
+        rgr_columns = numeric_cols if numeric_cols else list(X_test.columns)
+
+        # Compute the RGR curve and AURGR for Gaussian noise perturbation.
+        rgr_gaussian_df, aurgr_gaussian = compute_rgr_curve(
+            model=model,
+            X_test=X_test,
+            perturbation_type="gaussian",
+            columns=rgr_columns,
+            random_state=RANDOM_STATE,
+        )
+
+        # Compute the RGR curve and AURGR for percentile swapping perturbation.
+        rgr_swapping_df, aurgr_swapping = compute_rgr_curve(
+            model=model,
+            X_test=X_test,
+            perturbation_type="swapping",
+            columns=rgr_columns,
+            random_state=RANDOM_STATE,
+        )
+
+        # Save Gaussian RGR curve values to CSV.
+        # This file can be used later for tables, plots, or Overleaf.
+        rgr_gaussian_df.to_csv(RGR_GAUSSIAN_CSV_PATH, index=False)
+
+        # Save percentile swapping RGR curve values to CSV.
+        rgr_swapping_df.to_csv(RGR_SWAPPING_CSV_PATH, index=False)
+
+        # Save Gaussian RGR curve plot as PNG.
+        save_rgr_plot(
+            curve_df=rgr_gaussian_df,
+            output_path=RGR_GAUSSIAN_PLOT_PATH,
+            title="RGR Curve — Gaussian Noise Perturbation"
+        )
+
+        # Save percentile swapping RGR curve plot as PNG.
+        save_rgr_plot(
+            curve_df=rgr_swapping_df,
+            output_path=RGR_SWAPPING_PLOT_PATH,
+            title="RGR Curve — Percentile Swapping Perturbation"
+        )
+
+        # Aggregate both AURGR values into one simple RGR aggregate.
+        # This is useful for summary reporting.
+        rgr_aggregate = float(np.mean([aurgr_gaussian, aurgr_swapping]))
+
+        # Write a separate markdown report for the RGR results.
+        # This keeps the paper-style robustness outputs easy to find.
+        with open(RGR_REPORT_PATH, "w", encoding="utf-8") as f:
+            f.write("# Rank Graduation Robustness Report\n\n")
+
+            f.write("This report implements the paper-style RGR robustness analysis.\n\n")
+
+            f.write("## Method\n")
+            f.write("- Original model predictions are computed on the clean test set.\n")
+            f.write("- Perturbation intensity is increased step by step.\n")
+            f.write("- At each intensity level, predictions are recomputed.\n")
+            f.write("- RGR measures how much the perturbed prediction ranking preserves the original ranking.\n")
+            f.write("- AURGR is the area under the RGR curve.\n\n")
+
+            f.write("## Results\n")
+            f.write(f"- AURGR Gaussian Noise: {aurgr_gaussian:.4f}\n")
+            f.write(f"- AURGR Percentile Swapping: {aurgr_swapping:.4f}\n")
+            f.write(f"- RGR Aggregate: {rgr_aggregate:.4f}\n\n")
+
+            f.write("## Output Files\n")
+            f.write(f"- Gaussian curve CSV: {RGR_GAUSSIAN_CSV_PATH.name}\n")
+            f.write(f"- Swapping curve CSV: {RGR_SWAPPING_CSV_PATH.name}\n")
+            f.write(f"- Gaussian curve plot: {RGR_GAUSSIAN_PLOT_PATH.name}\n")
+            f.write(f"- Swapping curve plot: {RGR_SWAPPING_PLOT_PATH.name}\n")
+        # ------------------------------------------------------------
         # ENSEMBLE SAFE AUDITING
         # ------------------------------------------------------------
         ensemble_results = _ensemble_auditor(
@@ -622,6 +728,11 @@ def evaluation_and_risk_tool(description: str):
 - **Mitigated SAFE Score**: {mitigated_safe:.4f}
 - **Fairness Components**: SPD={fairness_metrics['fairness_score_spd']:.4f}, EOD={fairness_metrics['fairness_score_eod']:.4f}, AOD={fairness_metrics['fairness_score_aod']:.4f}, DIR={fairness_metrics['fairness_score_dir']:.4f}
 - **Robustness Components**: Noise={robustness_metrics['noise_auc_ratio']:.4f}, Dropout={robustness_metrics['dropout_auc_ratio']:.4f}, Missingness={robustness_metrics['missingness_auc_ratio']:.4f}
+- **AURGR Gaussian Noise**: {aurgr_gaussian:.4f}
+- **AURGR Percentile Swapping**: {aurgr_swapping:.4f}
+- **RGR Aggregate**: {rgr_aggregate:.4f}
+- **RGR Curve Files**: {RGR_GAUSSIAN_CSV_PATH.name}, {RGR_SWAPPING_CSV_PATH.name}
+- **RGR Plot Files**: {RGR_GAUSSIAN_PLOT_PATH.name}, {RGR_SWAPPING_PLOT_PATH.name}
 - **Mitigation Applied To Group**: {disadvantaged_group}
 - **Status**: Metrics extracted for weighting, mitigation, sensitivity analysis, and explainability.
 """
@@ -657,6 +768,21 @@ def evaluation_and_risk_tool(description: str):
 - Dropout AUC ratio: {robustness_metrics['dropout_auc_ratio']:.4f}
 - Missingness AUC ratio: {robustness_metrics['missingness_auc_ratio']:.4f}
 - Robustness aggregate: {robustness_metrics['robustness_aggregate']:.4f}
+
+## Rank-Based Robustness: RGR / AURGR
+- AURGR Gaussian Noise: {aurgr_gaussian:.4f}
+- AURGR Percentile Swapping: {aurgr_swapping:.4f}
+- RGR Aggregate: {rgr_aggregate:.4f}
+- Gaussian RGR curve CSV: {RGR_GAUSSIAN_CSV_PATH.name}
+- Percentile Swapping RGR curve CSV: {RGR_SWAPPING_CSV_PATH.name}
+- Gaussian RGR plot: {RGR_GAUSSIAN_PLOT_PATH.name}
+- Percentile Swapping RGR plot: {RGR_SWAPPING_PLOT_PATH.name}
+
+Interpretation:
+- RGR measures whether the ranking of model predictions remains stable after perturbing the input data.
+- A higher AURGR means the model is more robust across increasing perturbation intensities.
+- Gaussian noise tests sensitivity to continuous random noise.
+- Percentile swapping tests sensitivity to stronger distributional perturbations.
 
 ## Ensemble Auditing
 Individual auditor scores:

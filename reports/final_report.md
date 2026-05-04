@@ -25,6 +25,21 @@
 - Missingness AUC ratio: 1.0000
 - Robustness aggregate: 0.9636
 
+## Rank-Based Robustness: RGR / AURGR
+- AURGR Gaussian Noise: 0.9664
+- AURGR Percentile Swapping: 0.8162
+- RGR Aggregate: 0.8913
+- Gaussian RGR curve CSV: rgr_gaussian_curve.csv
+- Percentile Swapping RGR curve CSV: rgr_swapping_curve.csv
+- Gaussian RGR plot: rgr_gaussian_curve.png
+- Percentile Swapping RGR plot: rgr_swapping_curve.png
+
+Interpretation:
+- RGR measures whether the ranking of model predictions remains stable after perturbing the input data.
+- A higher AURGR means the model is more robust across increasing perturbation intensities.
+- Gaussian noise tests sensitivity to continuous random noise.
+- Percentile swapping tests sensitivity to stronger distributional perturbations.
+
 ## Ensemble Auditing
 Individual auditor scores:
 | auditor             |    score |
