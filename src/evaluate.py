@@ -1,30 +1,29 @@
 # src/evaluate.py
 
-# Standard library / core scientific stack
 import json
+
 import joblib
 import numpy as np
 import pandas as pd
 
-# CrewAI tool decorator so this evaluator can be used by the Evaluation Agent
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 from crewai.tools import tool
 
-# Metric used for predictive performance evaluation
+from sklearn.calibration import calibration_curve
 from sklearn.metrics import (
-    roc_auc_score,
     average_precision_score,
+    brier_score_loss,
+    confusion_matrix,
     f1_score,
     precision_score,
     recall_score,
-    confusion_matrix,
-    brier_score_loss,
+    roc_auc_score,
 )
-from sklearn.calibration import calibration_curve
-
-# Used in sensitivity analysis to reconstruct a raw-data test split
 from sklearn.model_selection import train_test_split
 
-# Configuration values controlling robustness tests, SAFE score weights, and thresholds
 from src.config import (
     RANDOM_STATE,
     ROBUST_NOISE_STD,
@@ -36,18 +35,12 @@ from src.config import (
     W_ROB,
 )
 
-# Fairness-related helper functions:
-# - mitigation
-# - fairness metrics from probabilities
-# - fairness metrics from predictions
 from src.fairness import (
     _apply_threshold_mitigation,
     _compute_fairness_from_predictions,
     _compute_fairness_metrics,
 )
 
-# Centralized paths for model/data/report artifacts.
-# plots, and markdown report can be saved inside the reports folder.
 from src.paths import (
     MODEL_PATH,
     TEST_FEATURES_PATH,
@@ -59,7 +52,12 @@ from src.paths import (
     FINAL_REPORT_PATH,
     SENSITIVITY_REPORT_PATH,
 
-    # RGR artifact paths
+    CLASSIFICATION_METRICS_CSV_PATH,
+    CONFUSION_MATRIX_CSV_PATH,
+    CONFUSION_MATRIX_PLOT_PATH,
+    CALIBRATION_CURVE_CSV_PATH,
+    CALIBRATION_CURVE_PLOT_PATH,
+
     RGR_GAUSSIAN_CSV_PATH,
     RGR_SWAPPING_CSV_PATH,
     RGR_GAUSSIAN_PLOT_PATH,
@@ -72,51 +70,36 @@ from src.paths import (
     RGE_IMPORTANCE_PLOT_PATH,
     RGE_REPORT_PATH,
 
-    ALL_MODEL_PATHS,
     RGA_CURVE_CSV_PATH,
     RGA_PLOT_PATH,
     RGA_REPORT_PATH,
+
     SHAP_RGE_COMPARISON_CSV_PATH,
     SHAP_RGE_REPORT_PATH,
+
+    ALL_MODEL_PATHS,
     MODEL_METRICS_COMPARISON_CSV_PATH,
     COMPLIANCE_SCORE_CSV_PATH,
     COMPLIANCE_SCORE_PLOT_PATH,
     SAFE_PAPER_METRICS_REPORT_PATH,
-
-    CLASSIFICATION_METRICS_CSV_PATH,
-    CONFUSION_MATRIX_CSV_PATH,
-    CONFUSION_MATRIX_PLOT_PATH,
-    CALIBRATION_CURVE_CSV_PATH,
-    CALIBRATION_CURVE_PLOT_PATH,
 )
 
-# Utility helpers
 from src.utils import _read_target_series, _safe_mean
 
-# RGR utilities:
-# - compute_rgr_curve creates the RGR curve and computes AURGR.
-# - save_rgr_plot saves the RGR curve as a PNG plot.
+from src.rga import compute_rga_curve, save_rga_plot
 from src.rgr import compute_rgr_curve, save_rgr_plot
-
 from src.rge import (
     compute_rge_feature_importance,
     compute_rge_curve,
     save_rge_curve_plot,
     save_rge_importance_plot,
 )
-
-from src.rga import compute_rga_curve, save_rga_plot
-
 from src.shap_compare import compare_rge_with_shap
-
 from src.compliance import (
     run_model_metric_comparison,
     compute_compliance_scores,
     save_compliance_plot,
 )
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 def _compute_robustness_metrics(model, X_test, y_test, numeric_cols):
     """
@@ -594,6 +577,180 @@ def _compute_classification_and_calibration_metrics(y_true, y_probs, threshold):
 
     return metrics, cm_df, calibration_df
 
+def _save_classification_artifacts(classification_metrics, confusion_matrix_df, calibration_df):
+    """Save classification metrics, confusion matrix, and calibration outputs."""
+    pd.DataFrame([classification_metrics]).to_csv(CLASSIFICATION_METRICS_CSV_PATH, index=False)
+    confusion_matrix_df.to_csv(CONFUSION_MATRIX_CSV_PATH)
+    calibration_df.to_csv(CALIBRATION_CURVE_CSV_PATH, index=False)
+
+    plt.figure(figsize=(5, 4))
+    plt.imshow(confusion_matrix_df.values)
+    plt.title("Confusion Matrix")
+    plt.xticks([0, 1], ["Pred 0", "Pred 1"])
+    plt.yticks([0, 1], ["Actual 0", "Actual 1"])
+
+    for i in range(confusion_matrix_df.shape[0]):
+        for j in range(confusion_matrix_df.shape[1]):
+            plt.text(j, i, confusion_matrix_df.values[i, j], ha="center", va="center")
+
+    plt.tight_layout()
+    plt.savefig(CONFUSION_MATRIX_PLOT_PATH, dpi=200)
+    plt.close()
+
+    plt.figure(figsize=(6, 5))
+    plt.plot(
+        calibration_df["mean_predicted_probability"],
+        calibration_df["fraction_of_positives"],
+        marker="o",
+        label="Model",
+    )
+    plt.plot([0, 1], [0, 1], linestyle="--", label="Perfect calibration")
+    plt.xlabel("Mean predicted probability")
+    plt.ylabel("Fraction of positives")
+    plt.title("Calibration Curve")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(CALIBRATION_CURVE_PLOT_PATH, dpi=200)
+    plt.close()
+
+
+def _run_rgr_analysis(model, X_test, rgr_columns):
+    """Run RGR robustness analysis and save CSV, plots, and report."""
+    rgr_gaussian_df, aurgr_gaussian = compute_rgr_curve(
+        model=model,
+        X_test=X_test,
+        perturbation_type="gaussian",
+        columns=rgr_columns,
+        random_state=RANDOM_STATE,
+    )
+
+    rgr_swapping_df, aurgr_swapping = compute_rgr_curve(
+        model=model,
+        X_test=X_test,
+        perturbation_type="swapping",
+        columns=rgr_columns,
+        random_state=RANDOM_STATE,
+    )
+
+    rgr_gaussian_df.to_csv(RGR_GAUSSIAN_CSV_PATH, index=False)
+    rgr_swapping_df.to_csv(RGR_SWAPPING_CSV_PATH, index=False)
+
+    save_rgr_plot(
+        curve_df=rgr_gaussian_df,
+        output_path=RGR_GAUSSIAN_PLOT_PATH,
+        title="RGR Curve — Gaussian Noise Perturbation",
+    )
+
+    save_rgr_plot(
+        curve_df=rgr_swapping_df,
+        output_path=RGR_SWAPPING_PLOT_PATH,
+        title="RGR Curve — Percentile Swapping Perturbation",
+    )
+
+    rgr_aggregate = float(np.mean([aurgr_gaussian, aurgr_swapping]))
+
+    with open(RGR_REPORT_PATH, "w", encoding="utf-8") as f:
+        f.write("# Rank Graduation Robustness Report\n\n")
+        f.write("RGR measures ranking stability under increasing perturbation intensity.\n\n")
+        f.write("## Results\n")
+        f.write(f"- AURGR Gaussian Noise: {aurgr_gaussian:.4f}\n")
+        f.write(f"- AURGR Percentile Swapping: {aurgr_swapping:.4f}\n")
+        f.write(f"- RGR Aggregate: {rgr_aggregate:.4f}\n\n")
+        f.write("## Output Files\n")
+        f.write(f"- Gaussian curve CSV: {RGR_GAUSSIAN_CSV_PATH.name}\n")
+        f.write(f"- Swapping curve CSV: {RGR_SWAPPING_CSV_PATH.name}\n")
+        f.write(f"- Gaussian curve plot: {RGR_GAUSSIAN_PLOT_PATH.name}\n")
+        f.write(f"- Swapping curve plot: {RGR_SWAPPING_PLOT_PATH.name}\n")
+
+    return aurgr_gaussian, aurgr_swapping, rgr_aggregate
+
+
+def _run_rge_analysis(model, X_test):
+    """Run RGE explainability analysis and save CSV, plots, and report."""
+    rge_importance_df = compute_rge_feature_importance(model=model, X_test=X_test)
+
+    rge_curve_df, aurge = compute_rge_curve(
+        model=model,
+        X_test=X_test,
+        importance_df=rge_importance_df,
+    )
+
+    rge_importance_df.to_csv(RGE_IMPORTANCE_CSV_PATH, index=False)
+    rge_curve_df.to_csv(RGE_CURVE_CSV_PATH, index=False)
+
+    save_rge_curve_plot(rge_curve_df, RGE_PLOT_PATH)
+    save_rge_importance_plot(rge_importance_df, RGE_IMPORTANCE_PLOT_PATH, top_k=15)
+
+    most_important = rge_importance_df.sort_values(
+        "rge_importance",
+        ascending=False,
+    ).head(10)
+
+    least_important = rge_importance_df.sort_values(
+        "rge_importance",
+        ascending=True,
+    ).head(10)
+
+    with open(RGE_REPORT_PATH, "w", encoding="utf-8") as f:
+        f.write("# Rank Graduation Explainability Report\n\n")
+        f.write("RGE measures ranking change when features are removed.\n\n")
+        f.write("## Results\n")
+        f.write(f"- AURGE: {aurge:.4f}\n")
+        f.write(f"- Number of processed features: {X_test.shape[1]}\n\n")
+
+        f.write("## Most Important Features by RGE\n")
+        f.write(most_important.to_markdown(index=False))
+        f.write("\n\n")
+
+        f.write("## Least Important Features by RGE\n")
+        f.write(least_important.to_markdown(index=False))
+        f.write("\n\n")
+
+        f.write("## Output Files\n")
+        f.write(f"- RGE feature importance CSV: {RGE_IMPORTANCE_CSV_PATH.name}\n")
+        f.write(f"- RGE curve CSV: {RGE_CURVE_CSV_PATH.name}\n")
+        f.write(f"- RGE curve plot: {RGE_PLOT_PATH.name}\n")
+        f.write(f"- RGE importance plot: {RGE_IMPORTANCE_PLOT_PATH.name}\n")
+
+    return rge_importance_df, rge_curve_df, aurge, most_important, least_important
+
+
+def _run_rga_analysis(model, X_test, y_test):
+    """Run RGA accuracy analysis and save CSV, plot, and report."""
+    rga_curve_df, aurga = compute_rga_curve(
+        model=model,
+        X_test=X_test,
+        y_test=y_test,
+    )
+
+    rga_curve_df.to_csv(RGA_CURVE_CSV_PATH, index=False)
+    save_rga_plot(rga_curve_df, RGA_PLOT_PATH)
+
+    with open(RGA_REPORT_PATH, "w", encoding="utf-8") as f:
+        f.write("# Rank Graduation Accuracy Report\n\n")
+        f.write("RGA implements paper-style rank-based accuracy analysis.\n\n")
+        f.write("## Results\n")
+        f.write(f"- AURGA: {aurga:.4f}\n")
+        f.write(f"- RGA curve CSV: {RGA_CURVE_CSV_PATH.name}\n")
+        f.write(f"- RGA curve plot: {RGA_PLOT_PATH.name}\n")
+
+    return rga_curve_df, aurga
+
+
+def _run_compliance_analysis(model_metrics_df):
+    """Compute compliance scores and save table and plot."""
+    compliance_df = compute_compliance_scores(model_metrics_df)
+
+    model_metrics_df.to_csv(MODEL_METRICS_COMPARISON_CSV_PATH, index=False)
+    compliance_df.to_csv(COMPLIANCE_SCORE_CSV_PATH, index=False)
+
+    save_compliance_plot(
+        compliance_df=compliance_df,
+        output_path=COMPLIANCE_SCORE_PLOT_PATH,
+    )
+
+    return compliance_df
+
 @tool
 def evaluation_and_risk_tool(description: str):
     """
@@ -631,44 +788,12 @@ def evaluation_and_risk_tool(description: str):
             threshold=PRED_THRESHOLD,
         )
 
-        classification_metrics_df = pd.DataFrame([classification_metrics])
-        classification_metrics_df.to_csv(CLASSIFICATION_METRICS_CSV_PATH, index=False)
-
-        confusion_matrix_df.to_csv(CONFUSION_MATRIX_CSV_PATH)
-
-        calibration_df.to_csv(CALIBRATION_CURVE_CSV_PATH, index=False)
-
-        # Save confusion matrix plot.
-        plt.figure(figsize=(5, 4))
-        plt.imshow(confusion_matrix_df.values)
-        plt.title("Confusion Matrix")
-        plt.xticks([0, 1], ["Pred 0", "Pred 1"])
-        plt.yticks([0, 1], ["Actual 0", "Actual 1"])
-
-        for i in range(confusion_matrix_df.shape[0]):
-            for j in range(confusion_matrix_df.shape[1]):
-                plt.text(j, i, confusion_matrix_df.values[i, j], ha="center", va="center")
-
-        plt.tight_layout()
-        plt.savefig(CONFUSION_MATRIX_PLOT_PATH, dpi=200)
-        plt.close()
-
-        # Save calibration curve plot.
-        plt.figure(figsize=(6, 5))
-        plt.plot(
-            calibration_df["mean_predicted_probability"],
-            calibration_df["fraction_of_positives"],
-            marker="o",
-            label="Model"
+        _save_classification_artifacts(
+            classification_metrics=classification_metrics,
+            confusion_matrix_df=confusion_matrix_df,
+            calibration_df=calibration_df,
         )
-        plt.plot([0, 1], [0, 1], linestyle="--", label="Perfect calibration")
-        plt.xlabel("Mean predicted probability")
-        plt.ylabel("Fraction of positives")
-        plt.title("Calibration Curve")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(CALIBRATION_CURVE_PLOT_PATH, dpi=200)
-        plt.close()
+
         # Load preprocessing metadata from the Data Card
         with open(DATACARD_PATH, "r", encoding="utf-8") as f:
             dc = json.load(f)
@@ -693,100 +818,15 @@ def evaluation_and_risk_tool(description: str):
             model, X_test, y_test, numeric_cols
         )
 
-        # ------------------------------------------------------------
-        # RANK-BASED ROBUSTNESS: RGR / AURGR
-        # ------------------------------------------------------------
-        # This implements the paper-style robustness analysis.
-        #
-        # Difference from the old robustness metrics:
-        # - Old robustness:
-        #   compares AUC before and after simple perturbations.
-        #
-        # - New RGR robustness:
-        #   compares the ranking of predictions before and after perturbations.
-        #
-        # We compute two RGR curves:
-        # 1. Gaussian noise curve
-        # 2. Percentile swapping curve
-        #
-        # For each curve:
-        # - perturbation intensity increases step by step
-        # - predictions are recomputed
-        # - ranking stability is measured
-        # - AURGR is computed as the area under the curve
-
-        # Choose which columns should be perturbed.
-        # Prefer numeric columns from the datacard.
-        # If numeric_cols is empty, fall back to all processed features.
+        # Rank-based robustness: RGR / AURGR
         rgr_columns = numeric_cols if numeric_cols else list(X_test.columns)
 
-        # Compute the RGR curve and AURGR for Gaussian noise perturbation.
-        rgr_gaussian_df, aurgr_gaussian = compute_rgr_curve(
+        aurgr_gaussian, aurgr_swapping, rgr_aggregate = _run_rgr_analysis(
             model=model,
             X_test=X_test,
-            perturbation_type="gaussian",
-            columns=rgr_columns,
-            random_state=RANDOM_STATE,
+            rgr_columns=rgr_columns,
         )
 
-        # Compute the RGR curve and AURGR for percentile swapping perturbation.
-        rgr_swapping_df, aurgr_swapping = compute_rgr_curve(
-            model=model,
-            X_test=X_test,
-            perturbation_type="swapping",
-            columns=rgr_columns,
-            random_state=RANDOM_STATE,
-        )
-
-        # Save Gaussian RGR curve values to CSV.
-        # This file can be used later for tables, plots, or Overleaf.
-        rgr_gaussian_df.to_csv(RGR_GAUSSIAN_CSV_PATH, index=False)
-
-        # Save percentile swapping RGR curve values to CSV.
-        rgr_swapping_df.to_csv(RGR_SWAPPING_CSV_PATH, index=False)
-
-        # Save Gaussian RGR curve plot as PNG.
-        save_rgr_plot(
-            curve_df=rgr_gaussian_df,
-            output_path=RGR_GAUSSIAN_PLOT_PATH,
-            title="RGR Curve — Gaussian Noise Perturbation"
-        )
-
-        # Save percentile swapping RGR curve plot as PNG.
-        save_rgr_plot(
-            curve_df=rgr_swapping_df,
-            output_path=RGR_SWAPPING_PLOT_PATH,
-            title="RGR Curve — Percentile Swapping Perturbation"
-        )
-
-        # Aggregate both AURGR values into one simple RGR aggregate.
-        # This is useful for summary reporting.
-        rgr_aggregate = float(np.mean([aurgr_gaussian, aurgr_swapping]))
-
-        # Write a separate markdown report for the RGR results.
-        # This keeps the paper-style robustness outputs easy to find.
-        with open(RGR_REPORT_PATH, "w", encoding="utf-8") as f:
-            f.write("# Rank Graduation Robustness Report\n\n")
-
-            f.write("This report implements the paper-style RGR robustness analysis.\n\n")
-
-            f.write("## Method\n")
-            f.write("- Original model predictions are computed on the clean test set.\n")
-            f.write("- Perturbation intensity is increased step by step.\n")
-            f.write("- At each intensity level, predictions are recomputed.\n")
-            f.write("- RGR measures how much the perturbed prediction ranking preserves the original ranking.\n")
-            f.write("- AURGR is the area under the RGR curve.\n\n")
-
-            f.write("## Results\n")
-            f.write(f"- AURGR Gaussian Noise: {aurgr_gaussian:.4f}\n")
-            f.write(f"- AURGR Percentile Swapping: {aurgr_swapping:.4f}\n")
-            f.write(f"- RGR Aggregate: {rgr_aggregate:.4f}\n\n")
-
-            f.write("## Output Files\n")
-            f.write(f"- Gaussian curve CSV: {RGR_GAUSSIAN_CSV_PATH.name}\n")
-            f.write(f"- Swapping curve CSV: {RGR_SWAPPING_CSV_PATH.name}\n")
-            f.write(f"- Gaussian curve plot: {RGR_GAUSSIAN_PLOT_PATH.name}\n")
-            f.write(f"- Swapping curve plot: {RGR_SWAPPING_PLOT_PATH.name}\n")
         # ------------------------------------------------------------
         # ENSEMBLE SAFE AUDITING
         # ------------------------------------------------------------
@@ -835,98 +875,17 @@ def evaluation_and_risk_tool(description: str):
         best_non_base_df = sensitivity_df[sensitivity_df["scenario"] != "base"]
         best_non_base = best_non_base_df.iloc[0] if not best_non_base_df.empty else best_scenario
 
-        # ------------------------------------------------------------
-        # RANK-BASED EXPLAINABILITY: RGE / AURGE
-        # ------------------------------------------------------------
-        # RGE measures how much the prediction ranking changes
-        # when features are removed from the input data.
+        # Rank-based explainability: RGE / AURGE
+        (
+            rge_importance_df,
+            rge_curve_df,
+            aurge,
+            most_important_rge_features,
+            least_important_rge_features,
+        ) = _run_rge_analysis(model, X_test)
 
-        rge_importance_df = compute_rge_feature_importance(
-            model=model,
-            X_test=X_test,
-        )
-
-        rge_curve_df, aurge = compute_rge_curve(
-            model=model,
-            X_test=X_test,
-            importance_df=rge_importance_df,
-        )
-
-        # Save RGE outputs for reporting and Overleaf
-        rge_importance_df.to_csv(RGE_IMPORTANCE_CSV_PATH, index=False)
-        rge_curve_df.to_csv(RGE_CURVE_CSV_PATH, index=False)
-
-        save_rge_curve_plot(
-            curve_df=rge_curve_df,
-            output_path=RGE_PLOT_PATH,
-        )
-
-        save_rge_importance_plot(
-            importance_df=rge_importance_df,
-            output_path=RGE_IMPORTANCE_PLOT_PATH,
-            top_k=15,
-        )
-
-        # Short summaries for reports
-        most_important_rge_features = rge_importance_df.sort_values(
-            "rge_importance",
-            ascending=False
-        ).head(10)
-
-        least_important_rge_features = rge_importance_df.sort_values(
-            "rge_importance",
-            ascending=True
-        ).head(10)
-
-        with open(RGE_REPORT_PATH, "w", encoding="utf-8") as f:
-            f.write("# Rank Graduation Explainability Report\n\n")
-            f.write("This report implements the paper-style RGE explainability analysis.\n\n")
-
-            f.write("## Method\n")
-            f.write("- Original predictions are computed on the clean test set.\n")
-            f.write("- Each feature is removed individually to estimate RGE importance.\n")
-            f.write("- Features are ordered from least important to most important.\n")
-            f.write("- Features are progressively removed in this order to create the RGE curve.\n")
-            f.write("- AURGE is the area under the RGE curve.\n\n")
-
-            f.write("## Results\n")
-            f.write(f"- AURGE: {aurge:.4f}\n")
-            f.write(f"- Number of processed features: {X_test.shape[1]}\n\n")
-
-            f.write("## Most Important Features by RGE\n")
-            f.write(most_important_rge_features.to_markdown(index=False))
-            f.write("\n\n")
-
-            f.write("## Least Important Features by RGE\n")
-            f.write(least_important_rge_features.to_markdown(index=False))
-            f.write("\n\n")
-
-            f.write("## Output Files\n")
-            f.write(f"- RGE feature importance CSV: {RGE_IMPORTANCE_CSV_PATH.name}\n")
-            f.write(f"- RGE curve CSV: {RGE_CURVE_CSV_PATH.name}\n")
-            f.write(f"- RGE curve plot: {RGE_PLOT_PATH.name}\n")
-            f.write(f"- RGE importance plot: {RGE_IMPORTANCE_PLOT_PATH.name}\n")
-
-
-        # ------------------------------------------------------------
-        # RANK-BASED ACCURACY: RGA / AURGA
-        # ------------------------------------------------------------
-        rga_curve_df, aurga = compute_rga_curve(
-            model=model,
-            X_test=X_test,
-            y_test=y_test,
-        )
-
-        rga_curve_df.to_csv(RGA_CURVE_CSV_PATH, index=False)
-        save_rga_plot(rga_curve_df, RGA_PLOT_PATH)
-
-        with open(RGA_REPORT_PATH, "w", encoding="utf-8") as f:
-            f.write("# Rank Graduation Accuracy Report\n\n")
-            f.write("This report implements the paper-style RGA accuracy analysis.\n\n")
-            f.write("## Results\n")
-            f.write(f"- AURGA: {aurga:.4f}\n")
-            f.write(f"- RGA curve CSV: {RGA_CURVE_CSV_PATH.name}\n")
-            f.write(f"- RGA curve plot: {RGA_PLOT_PATH.name}\n")
+        # Rank-based accuracy: RGA / AURGA
+        rga_curve_df, aurga = _run_rga_analysis(model, X_test, y_test)
 
         # ------------------------------------------------------------
         # RGE VS SHAP COMPARISON
@@ -950,16 +909,8 @@ def evaluation_and_risk_tool(description: str):
             random_state=RANDOM_STATE,
         )
 
-        compliance_df = compute_compliance_scores(model_metrics_df)
-
-        model_metrics_df.to_csv(MODEL_METRICS_COMPARISON_CSV_PATH, index=False)
-        compliance_df.to_csv(COMPLIANCE_SCORE_CSV_PATH, index=False)
-
-        save_compliance_plot(
-            compliance_df=compliance_df,
-            output_path=COMPLIANCE_SCORE_PLOT_PATH,
-        )
-
+        compliance_df = _run_compliance_analysis(model_metrics_df)
+        
         with open(SAFE_PAPER_METRICS_REPORT_PATH, "w", encoding="utf-8") as f:
             f.write("# SAFE AI Paper Metrics Report\n\n")
             f.write("This report summarizes the implemented SAFE AI paper metrics across multiple models.\n\n")

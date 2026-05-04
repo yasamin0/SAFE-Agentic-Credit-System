@@ -1,6 +1,6 @@
 # Rank Graduation Accuracy Report
 
-This report implements the paper-style RGA accuracy analysis.
+RGA implements paper-style rank-based accuracy analysis.
 
 ## Results
 - AURGA: 0.7012

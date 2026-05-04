@@ -2,11 +2,11 @@
 
 import numpy as np
 import pandas as pd
-# Use non-GUI backend for saving plots safely in automated runs.
+import joblib
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import joblib
 
 from src.rga import compute_rga_curve
 from src.rgr import compute_rgr_curve
@@ -14,10 +14,7 @@ from src.rge import compute_rge_feature_importance, compute_rge_curve
 
 
 def _compute_topsis(df, metric_cols):
-    """
-    Compute TOPSIS score for model comparison.
-    Higher metric values are assumed to be better.
-    """
+    """Compute TOPSIS scores. Higher metric values are better."""
     values = df[metric_cols].astype(float).values
 
     denom = np.sqrt((values ** 2).sum(axis=0))
@@ -36,14 +33,10 @@ def _compute_topsis(df, metric_cols):
 
 def compute_compliance_scores(metrics_df):
     """
-    Compute final Compliance Score using:
-    - Arithmetic mean
-    - Geometric mean
-    - RMS
-    - TOPSIS
+    Compute compliance scores from AURGA, AURGR, and AURGE.
+    Includes arithmetic mean, geometric mean, RMS, and TOPSIS.
     """
     df = metrics_df.copy()
-
     metric_cols = ["AURGA", "AURGR", "AURGE"]
 
     df["Compliance_Arithmetic"] = df[metric_cols].mean(axis=1)
@@ -53,7 +46,6 @@ def compute_compliance_scores(metrics_df):
     )
 
     df["Compliance_RMS"] = np.sqrt((df[metric_cols] ** 2).mean(axis=1))
-
     df["Compliance_TOPSIS"] = _compute_topsis(df, metric_cols)
 
     return df.sort_values("Compliance_TOPSIS", ascending=False).reset_index(drop=True)
@@ -66,9 +58,7 @@ def run_model_metric_comparison(
     rgr_columns,
     random_state,
 ):
-    """
-    Compute AURGA, AURGR, and AURGE for all trained models.
-    """
+    """Compute AURGA, AURGR, and AURGE for all saved model candidates."""
     rows = []
 
     for model_name, model_path in all_model_paths.items():
@@ -108,9 +98,7 @@ def run_model_metric_comparison(
 
 
 def save_compliance_plot(compliance_df, output_path):
-    """
-    Save a bar plot of TOPSIS Compliance Score by model.
-    """
+    """Save a horizontal bar chart of TOPSIS compliance scores."""
     plot_df = compliance_df.sort_values("Compliance_TOPSIS", ascending=True)
 
     plt.figure(figsize=(9, 6))

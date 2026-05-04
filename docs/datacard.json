@@ -1,5 +1,9 @@
 {
   "status": "CLEANED",
+  "raw_rows": 1000,
+  "raw_columns": 21,
+  "train_rows": 800,
+  "test_rows": 200,
   "features_after_encoding": 61,
   "numeric_features_raw": [
     "duration",
@@ -51,10 +55,6 @@
     },
     "decision_rule": "APPROVED if SAFE_SCORE >= APPROVAL_THRESHOLD else REJECTED, where SAFE_SCORE = W_AUC*AUC + W_FAIR*FAIRNESS_AGG + W_ROB*ROBUSTNESS_AGG"
   },
-  "raw_rows": 1000,
-  "raw_columns": 21,
-  "train_rows": 800,
-  "test_rows": 200,
   "eda_artifacts": {
     "target_distribution": "eda_target_distribution.png",
     "numeric_distributions": "eda_numeric_distributions.png",

@@ -1,13 +1,6 @@
 # Rank Graduation Robustness Report
 
-This report implements the paper-style RGR robustness analysis.
-
-## Method
-- Original model predictions are computed on the clean test set.
-- Perturbation intensity is increased step by step.
-- At each intensity level, predictions are recomputed.
-- RGR measures how much the perturbed prediction ranking preserves the original ranking.
-- AURGR is the area under the RGR curve.
+RGR measures ranking stability under increasing perturbation intensity.
 
 ## Results
 - AURGR Gaussian Noise: 0.9814

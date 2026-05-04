@@ -1,13 +1,6 @@
 # Rank Graduation Explainability Report
 
-This report implements the paper-style RGE explainability analysis.
-
-## Method
-- Original predictions are computed on the clean test set.
-- Each feature is removed individually to estimate RGE importance.
-- Features are ordered from least important to most important.
-- Features are progressively removed in this order to create the RGE curve.
-- AURGE is the area under the RGE curve.
+RGE measures ranking change when features are removed.
 
 ## Results
 - AURGE: 0.9816
