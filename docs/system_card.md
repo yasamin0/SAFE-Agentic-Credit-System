@@ -38,7 +38,7 @@ In this run, the model is rejected because the weighted SAFE score is below the 
 ## Additional Performance Metrics
 - PR-AUC: 0.5615
 - Precision: 0.6562
-- Recall: 0.35
+- Recall: 0.3500
 - F1 Score: 0.4565
 - Brier Score: 0.1689
 
@@ -62,10 +62,10 @@ Fairness Aggregate: 0.5363
 - Mitigated Decision: REJECTED
 
 ## SAFE AI Paper Metrics
-- AURGA: 0.7012
+- AURGA: 0.6903
 - RGR Aggregate: 0.9145
 - AURGE: 0.9816
-- SHAP-RGE Spearman Correlation: 0.983841540319698
+- SHAP-RGE Spearman Correlation: 0.9838
 
 ## Configuration
 - Prediction threshold: 0.55

@@ -1,24 +1,19 @@
 # src/reporting.py
 
-# Regular expressions are used to parse numeric metrics from the evaluation report
 import re
 
-# CrewAI tool decorator so this governance step can be called by the Governance Agent
 from crewai.tools import tool
 
-# Configuration values used in the final SAFE decision rule
 from src.config import (
+    APPROVAL_THRESHOLD,
+    DROP_SENSITIVE_FROM_MODEL,
+    PRED_THRESHOLD,
+    RANDOM_STATE,
+    SENSITIVE_FEATURE,
     W_AUC,
     W_FAIR,
     W_ROB,
-    APPROVAL_THRESHOLD,
-    PRED_THRESHOLD,
-    SENSITIVE_FEATURE,
-    DROP_SENSITIVE_FROM_MODEL,
-    RANDOM_STATE,
 )
-
-# Paths to the evaluation input and system-card output artifacts
 from src.paths import (
     EVALUATION_REPORT_PATH,
     SENSITIVITY_REPORT_PATH,
@@ -26,73 +21,89 @@ from src.paths import (
 )
 
 
-@tool
-def governance_scoring_tool(description: str):
-    """
-    Read evaluation_report.md, compute the final SAFE score,
-    and write a clear governance system card.
-    """
+def _extract_float(text, label):
+    """Extract a numeric metric from markdown text."""
+    pattern = rf"\*\*{re.escape(label)}\*\*:\s*([0-9]*\.?[0-9]+)"
+    match = re.search(pattern, text, re.MULTILINE)
+    return float(match.group(1)) if match else None
+
+
+def _fmt(value, digits=4):
+    """Format optional numeric values."""
+    return f"{value:.{digits}f}" if value is not None else "N/A"
+
+
+def _read_sensitivity_excerpt(max_lines=18):
+    """Read a short sensitivity-report excerpt for the system card."""
     try:
-        with open(EVALUATION_REPORT_PATH, "r", encoding="utf-8") as f:
-            rep = f.read()
+        with open(SENSITIVITY_REPORT_PATH, "r", encoding="utf-8") as f:
+            return "\n".join(f.read().splitlines()[:max_lines])
+    except Exception:
+        return "Sensitivity report was not available."
 
-        if not rep.strip():
-            return "REJECTED: evaluation_report.md is empty."
 
-        def extract_float(label):
-            pattern = rf"\*\*{re.escape(label)}\*\*:\s*([0-9]*\.?[0-9]+)"
-            m = re.search(pattern, rep, re.MULTILINE)
-            return float(m.group(1)) if m else None
+def _parse_evaluation_metrics(report_text):
+    """Parse governance and auxiliary metrics from evaluation_report.md."""
+    return {
+        "auc": _extract_float(report_text, "Accuracy (AUC)"),
+        "fair": _extract_float(report_text, "Fairness Aggregate"),
+        "rob": _extract_float(report_text, "Robustness Aggregate"),
 
-        auc = extract_float("Accuracy (AUC)")
-        fair = extract_float("Fairness Aggregate")
-        rob = extract_float("Robustness Aggregate")
+        "pr_auc": _extract_float(report_text, "PR-AUC"),
+        "precision": _extract_float(report_text, "Precision"),
+        "recall": _extract_float(report_text, "Recall"),
+        "f1": _extract_float(report_text, "F1 Score"),
+        "brier": _extract_float(report_text, "Brier Score"),
 
-        pr_auc = extract_float("PR-AUC")
-        precision = extract_float("Precision")
-        recall = extract_float("Recall")
-        f1 = extract_float("F1 Score")
-        brier = extract_float("Brier Score")
+        "aurga": _extract_float(report_text, "AURGA"),
+        "aurge": _extract_float(report_text, "AURGE"),
+        "rgr": _extract_float(report_text, "RGR Aggregate"),
+        "shap_corr": _extract_float(report_text, "SHAP-RGE Spearman Correlation"),
 
-        aurga = extract_float("AURGA")
-        aurge = extract_float("AURGE")
-        rgr = extract_float("RGR Aggregate")
-        shap_corr = extract_float("SHAP-RGE Spearman Correlation")
+        "mitigated_safe": _extract_float(report_text, "Mitigated SAFE Score"),
+        "mitigated_auc": _extract_float(report_text, "Mitigated AUC"),
+        "mitigated_fair": _extract_float(report_text, "Mitigated Fairness Aggregate"),
+    }
 
-        mitigated_safe = extract_float("Mitigated SAFE Score")
-        mitigated_auc = extract_float("Mitigated AUC")
-        mitigated_fair = extract_float("Mitigated Fairness Aggregate")
 
-        if auc is None or fair is None or rob is None:
-            return "REJECTED: Could not parse AUC/Fairness Aggregate/Robustness Aggregate from evaluation_report.md."
+def _compute_safe_decision(metrics):
+    """Compute final SAFE score and decision."""
+    final_score = (
+        W_AUC * metrics["auc"]
+        + W_FAIR * metrics["fair"]
+        + W_ROB * metrics["rob"]
+    )
 
-        final_score = (W_AUC * auc) + (W_FAIR * fair) + (W_ROB * rob)
-        decision = "APPROVED" if final_score >= APPROVAL_THRESHOLD else "REJECTED"
+    decision = "APPROVED" if final_score >= APPROVAL_THRESHOLD else "REJECTED"
 
-        mitigated_decision = "N/A"
-        if mitigated_safe is not None:
-            mitigated_decision = "APPROVED" if mitigated_safe >= APPROVAL_THRESHOLD else "REJECTED"
+    return final_score, decision
 
-        weakest_metric = min(
-            {
-                "AUC": auc,
-                "Fairness Aggregate": fair,
-                "Robustness Aggregate": rob,
-            },
-            key={
-                "AUC": auc,
-                "Fairness Aggregate": fair,
-                "Robustness Aggregate": rob,
-            }.get
+
+def _get_weakest_dimension(metrics):
+    """Return the weakest core SAFE dimension."""
+    core_scores = {
+        "AUC": metrics["auc"],
+        "Fairness Aggregate": metrics["fair"],
+        "Robustness Aggregate": metrics["rob"],
+    }
+
+    return min(core_scores, key=core_scores.get)
+
+
+def _build_system_card(metrics, final_score, decision):
+    """Build the markdown system card."""
+    mitigated_safe = metrics["mitigated_safe"]
+
+    mitigated_decision = "N/A"
+    if mitigated_safe is not None:
+        mitigated_decision = (
+            "APPROVED" if mitigated_safe >= APPROVAL_THRESHOLD else "REJECTED"
         )
 
-        try:
-            with open(SENSITIVITY_REPORT_PATH, "r", encoding="utf-8") as f:
-                sensitivity_excerpt = "\n".join(f.read().splitlines()[:18])
-        except Exception:
-            sensitivity_excerpt = "Sensitivity report was not available."
+    weakest_metric = _get_weakest_dimension(metrics)
+    sensitivity_excerpt = _read_sensitivity_excerpt()
 
-        system_card = f"""# System Card — SAFE Agentic Credit Scoring
+    return f"""# System Card — SAFE Agentic Credit Scoring
 
 ## Final Governance Decision
 **Decision:** {decision}
@@ -119,9 +130,9 @@ Current weights:
 - W_ROB = {W_ROB:.3f}
 
 Current computation:
-- AUC = {auc:.4f}
-- Fairness Aggregate = {fair:.4f}
-- Robustness Aggregate = {rob:.4f}
+- AUC = {metrics["auc"]:.4f}
+- Fairness Aggregate = {metrics["fair"]:.4f}
+- Robustness Aggregate = {metrics["rob"]:.4f}
 - Final SAFE Score = {final_score:.4f}
 
 ## Main Reason for Decision
@@ -130,11 +141,11 @@ The weakest core dimension is **{weakest_metric}**.
 In this run, the model is rejected because the weighted SAFE score is below the approval threshold.
 
 ## Additional Performance Metrics
-- PR-AUC: {pr_auc if pr_auc is not None else "N/A"}
-- Precision: {precision if precision is not None else "N/A"}
-- Recall: {recall if recall is not None else "N/A"}
-- F1 Score: {f1 if f1 is not None else "N/A"}
-- Brier Score: {brier if brier is not None else "N/A"}
+- PR-AUC: {_fmt(metrics["pr_auc"])}
+- Precision: {_fmt(metrics["precision"])}
+- Recall: {_fmt(metrics["recall"])}
+- F1 Score: {_fmt(metrics["f1"])}
+- Brier Score: {_fmt(metrics["brier"])}
 
 ## Fairness Extension
 Fairness is kept as an extension for credit lending.
@@ -147,19 +158,19 @@ The system evaluates:
 - Fairness Aggregate
 - Group-aware mitigation result
 
-Fairness Aggregate: {fair:.4f}
+Fairness Aggregate: {metrics["fair"]:.4f}
 
 ## Mitigation Result
-- Mitigated AUC: {mitigated_auc if mitigated_auc is not None else "N/A"}
-- Mitigated Fairness Aggregate: {mitigated_fair if mitigated_fair is not None else "N/A"}
-- Mitigated SAFE Score: {mitigated_safe if mitigated_safe is not None else "N/A"}
+- Mitigated AUC: {_fmt(metrics["mitigated_auc"])}
+- Mitigated Fairness Aggregate: {_fmt(metrics["mitigated_fair"])}
+- Mitigated SAFE Score: {_fmt(metrics["mitigated_safe"])}
 - Mitigated Decision: {mitigated_decision}
 
 ## SAFE AI Paper Metrics
-- AURGA: {aurga if aurga is not None else "N/A"}
-- RGR Aggregate: {rgr if rgr is not None else "N/A"}
-- AURGE: {aurge if aurge is not None else "N/A"}
-- SHAP-RGE Spearman Correlation: {shap_corr if shap_corr is not None else "N/A"}
+- AURGA: {_fmt(metrics["aurga"])}
+- RGR Aggregate: {_fmt(metrics["rgr"])}
+- AURGE: {_fmt(metrics["aurge"])}
+- SHAP-RGE Spearman Correlation: {_fmt(metrics["shap_corr"])}
 
 ## Configuration
 - Prediction threshold: {PRED_THRESHOLD}
@@ -176,10 +187,35 @@ This card separates two concepts:
 2. **Compliance Score**, which is the SAFE AI paper-style score using AURGA, AURGR, AURGE, and TOPSIS.
 """
 
+
+@tool
+def governance_scoring_tool(description: str):
+    """Read evaluation_report.md and write the final system card."""
+    try:
+        with open(EVALUATION_REPORT_PATH, "r", encoding="utf-8") as f:
+            report_text = f.read()
+
+        if not report_text.strip():
+            return "REJECTED: evaluation_report.md is empty."
+
+        metrics = _parse_evaluation_metrics(report_text)
+
+        if metrics["auc"] is None or metrics["fair"] is None or metrics["rob"] is None:
+            return (
+                "REJECTED: Could not parse AUC/Fairness Aggregate/"
+                "Robustness Aggregate from evaluation_report.md."
+            )
+
+        final_score, decision = _compute_safe_decision(metrics)
+        system_card = _build_system_card(metrics, final_score, decision)
+
         with open(SYSTEM_CARD_PATH, "w", encoding="utf-8") as f:
             f.write(system_card)
 
-        return f"{decision}: SAFE Score={final_score:.3f}. System Card saved to {SYSTEM_CARD_PATH.name}."
+        return (
+            f"{decision}: SAFE Score={final_score:.3f}. "
+            f"System Card saved to {SYSTEM_CARD_PATH.name}."
+        )
 
     except Exception as e:
         return f"GOVERNANCE FAILED: {e}"

@@ -1,16 +1,15 @@
+# src/rge.py
+
 import numpy as np
 import pandas as pd
 
-# Use non-GUI backend for saving plots safely in automated runs.
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+
 def _rank_graduation_similarity(reference_scores, comparison_scores):
-    """
-    Compute rank-based similarity between original and modified predictions.
-    Higher value means the prediction ranking is more stable.
-    """
+    """Measure how stable prediction rankings remain after a change."""
     ref = np.asarray(reference_scores, dtype=float)
     comp = np.asarray(comparison_scores, dtype=float)
 
@@ -41,10 +40,7 @@ def _rank_graduation_similarity(reference_scores, comparison_scores):
 
 
 def _remove_features(X, features_to_remove, replacement_value=0.0):
-    """
-    Remove processed features by replacing them with a neutral value.
-    Since the data is already encoded/scaled, 0.0 is a practical baseline.
-    """
+    """Replace selected processed features with a neutral baseline."""
     X_removed = X.copy()
 
     for feature in features_to_remove:
@@ -56,15 +52,10 @@ def _remove_features(X, features_to_remove, replacement_value=0.0):
 
 def compute_rge_feature_importance(model, X_test):
     """
-    Compute RGE-based importance for each processed feature.
+    Compute RGE feature importance.
 
-    For each feature:
-    - remove only that feature
-    - recompute predictions
-    - compare ranking with original predictions
-    - importance = 1 - rank_similarity
-
-    Higher importance means removing that feature changes the ranking more.
+    Importance is defined as:
+    importance = 1 - ranking similarity after removing the feature.
     """
     base_scores = model.predict_proba(X_test)[:, 1]
     rows = []
@@ -78,25 +69,23 @@ def compute_rge_feature_importance(model, X_test):
             comparison_scores=removed_scores,
         )
 
-        importance = 1.0 - similarity
-
         rows.append({
             "feature": feature,
             "rge_similarity_after_removal": float(similarity),
-            "rge_importance": float(importance),
+            "rge_importance": float(1.0 - similarity),
         })
 
     importance_df = pd.DataFrame(rows)
 
-    # Least important first, most important last
+    # Order features from least important to most important.
     importance_df = importance_df.sort_values(
         "rge_importance",
-        ascending=True
+        ascending=True,
     ).reset_index(drop=True)
 
     importance_df["importance_rank_least_to_most"] = np.arange(
         1,
-        len(importance_df) + 1
+        len(importance_df) + 1,
     )
 
     return importance_df
@@ -104,23 +93,19 @@ def compute_rge_feature_importance(model, X_test):
 
 def compute_rge_curve(model, X_test, importance_df):
     """
-    Build the RGE curve by progressively removing features.
+    Build the RGE curve.
 
-    Features are removed from least important to most important.
-    The curve shows how prediction ranking stability decreases.
+    Features are progressively removed from least important to most important.
     """
     base_scores = model.predict_proba(X_test)[:, 1]
     ordered_features = importance_df["feature"].tolist()
 
-    rows = []
-
-    # Start with no features removed
-    rows.append({
+    rows = [{
         "num_removed_features": 0,
         "fraction_removed": 0.0,
         "removed_features": "none",
         "rge_curve_value": 1.0,
-    })
+    }]
 
     removed_features = []
 
@@ -144,8 +129,7 @@ def compute_rge_curve(model, X_test, importance_df):
 
     curve_df = pd.DataFrame(rows)
 
-    # Compute AURGE using trapezoidal integration.
-    # np.trapz is used instead of np.trapezoid for compatibility with older NumPy versions.
+    # Use np.trapz for compatibility with older NumPy versions.
     aurge = float(np.trapz(
         y=curve_df["rge_curve_value"].values,
         x=curve_df["fraction_removed"].values,
@@ -155,11 +139,13 @@ def compute_rge_curve(model, X_test, importance_df):
 
 
 def save_rge_curve_plot(curve_df, output_path):
-    """
-    Save the RGE curve plot.
-    """
+    """Save the RGE curve plot."""
     plt.figure(figsize=(7, 5))
-    plt.plot(curve_df["fraction_removed"], curve_df["rge_curve_value"], marker="o")
+    plt.plot(
+        curve_df["fraction_removed"],
+        curve_df["rge_curve_value"],
+        marker="o",
+    )
     plt.xlabel("Fraction of removed features")
     plt.ylabel("RGE curve value")
     plt.title("RGE Curve — Progressive Feature Removal")
@@ -171,12 +157,10 @@ def save_rge_curve_plot(curve_df, output_path):
 
 
 def save_rge_importance_plot(importance_df, output_path, top_k=15):
-    """
-    Save a bar plot of the top RGE-important features.
-    """
+    """Save a bar plot of top RGE-important features."""
     top_df = importance_df.sort_values(
         "rge_importance",
-        ascending=False
+        ascending=False,
     ).head(top_k)
 
     plt.figure(figsize=(9, 6))

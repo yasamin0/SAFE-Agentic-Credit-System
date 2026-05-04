@@ -34,10 +34,38 @@ def _compute_topsis(df, metric_cols):
 def compute_compliance_scores(metrics_df):
     """
     Compute compliance scores from AURGA, AURGR, and AURGE.
-    Includes arithmetic mean, geometric mean, RMS, and TOPSIS.
+
+    Important:
+    A weak or random model can sometimes look artificially strong in AURGR/AURGE
+    because bad rankings may still remain stable under perturbation/removal.
+    To avoid rewarding stable-but-useless models, compliance uses adjusted
+    robustness/explainability values when AURGA is very weak.
     """
     df = metrics_df.copy()
-    metric_cols = ["AURGA", "AURGR", "AURGE"]
+
+    # Keep original paper metrics unchanged for reporting.
+    # These columns still show the raw measured AURGA/AURGR/AURGE values.
+    df["AURGR_for_compliance"] = df["AURGR"]
+    df["AURGE_for_compliance"] = df["AURGE"]
+
+    # Penalize models with weak rank-based accuracy.
+    # This prevents Random Baseline or very weak models from getting high compliance
+    # only because their predictions are stable.
+    weak_mask = (df["Model"] == "Random Baseline") | (df["AURGA"] <= 0.55)
+
+    df.loc[weak_mask, "AURGR_for_compliance"] = df.loc[
+        weak_mask, ["AURGR", "AURGA"]
+    ].min(axis=1)
+
+    df.loc[weak_mask, "AURGE_for_compliance"] = df.loc[
+        weak_mask, ["AURGE", "AURGA"]
+    ].min(axis=1)
+
+    metric_cols = [
+        "AURGA",
+        "AURGR_for_compliance",
+        "AURGE_for_compliance",
+    ]
 
     df["Compliance_Arithmetic"] = df[metric_cols].mean(axis=1)
 
@@ -46,11 +74,10 @@ def compute_compliance_scores(metrics_df):
     )
 
     df["Compliance_RMS"] = np.sqrt((df[metric_cols] ** 2).mean(axis=1))
+
     df["Compliance_TOPSIS"] = _compute_topsis(df, metric_cols)
 
     return df.sort_values("Compliance_TOPSIS", ascending=False).reset_index(drop=True)
-
-
 def run_model_metric_comparison(
     all_model_paths,
     X_test,

@@ -29,7 +29,7 @@
 - **RGE Feature Importance File**: rge_feature_importance.csv
 - **RGE Curve File**: rge_curve.csv
 - **RGE Plot Files**: rge_curve.png, rge_feature_importance.png
-- **AURGA**: 0.7012
+- **AURGA**: 0.6903
 - **SHAP-RGE Spearman Correlation**: 0.983841540319698
 - **Model Metrics Comparison File**: model_metrics_comparison.csv
 - **Compliance Score File**: compliance_score_comparison.csv

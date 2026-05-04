@@ -193,7 +193,7 @@ Top 10 most important processed features by XGBoost importance:
 | other_parties_guarantor                       |    0.0267429 |
 
 ## SAFE AI Paper Metrics: Multi-Model Compliance Comparison
-- AURGA: 0.7012
+- AURGA: 0.6903
 - AURGR Gaussian Noise: 0.9814
 - AURGR Percentile Swapping: 0.8475
 - AURGE: 0.9816
@@ -202,22 +202,22 @@ Top 10 most important processed features by XGBoost importance:
 Model metrics comparison:
 | Model               |    AURGA |   AURGR_Gaussian |   AURGR_Swapping |    AURGR |    AURGE |
 |:--------------------|---------:|-----------------:|-----------------:|---------:|---------:|
-| Logistic Regression | 0.656765 |         0.996301 |         0.846401 | 0.921351 | 0.974049 |
-| Random Forest       | 0.730336 |         0.99553  |         0.923426 | 0.959478 | 0.982013 |
-| XGBoost             | 0.701229 |         0.981441 |         0.847468 | 0.914455 | 0.981596 |
-| Voting Ensemble     | 0.720947 |         0.99164  |         0.864491 | 0.928066 | 0.971187 |
-| Stacking Ensemble   | 0.713829 |         0.994305 |         0.869086 | 0.931696 | 0.972548 |
+| Logistic Regression | 0.640236 |         0.996301 |         0.846401 | 0.921351 | 0.974049 |
+| Random Forest       | 0.7211   |         0.99553  |         0.923426 | 0.959478 | 0.982013 |
+| XGBoost             | 0.690258 |         0.981441 |         0.847468 | 0.914455 | 0.981596 |
+| Voting Ensemble     | 0.709529 |         0.99164  |         0.864491 | 0.928066 | 0.971187 |
+| Stacking Ensemble   | 0.701846 |         0.994305 |         0.869086 | 0.931696 | 0.972548 |
 | Random Baseline     | 0.5      |         1        |         1        | 1        | 1        |
 
 Compliance score comparison:
-| Model               |    AURGA |   AURGR_Gaussian |   AURGR_Swapping |    AURGR |    AURGE |   Compliance_Arithmetic |   Compliance_Geometric |   Compliance_RMS |   Compliance_TOPSIS |
-|:--------------------|---------:|-----------------:|-----------------:|---------:|---------:|------------------------:|-----------------------:|-----------------:|--------------------:|
-| Random Forest       | 0.730336 |         0.99553  |         0.923426 | 0.959478 | 0.982013 |                0.890609 |               0.88286  |         0.897838 |            0.880599 |
-| Voting Ensemble     | 0.720947 |         0.99164  |         0.864491 | 0.928066 | 0.971187 |                0.8734   |               0.866154 |         0.880203 |            0.797964 |
-| Stacking Ensemble   | 0.713829 |         0.994305 |         0.869086 | 0.931696 | 0.972548 |                0.872691 |               0.864821 |         0.880049 |            0.795747 |
-| XGBoost             | 0.701229 |         0.981441 |         0.847468 | 0.914455 | 0.981596 |                0.86576  |               0.857008 |         0.873972 |            0.744791 |
-| Logistic Regression | 0.656765 |         0.996301 |         0.846401 | 0.921351 | 0.974049 |                0.850722 |               0.83844  |         0.861974 |            0.624381 |
-| Random Baseline     | 0.5      |         1        |         1        | 1        | 1        |                0.833333 |               0.793701 |         0.866025 |            0.218483 |
+| Model               |    AURGA |   AURGR_Gaussian |   AURGR_Swapping |    AURGR |    AURGE |   AURGR_for_compliance |   AURGE_for_compliance |   Compliance_Arithmetic |   Compliance_Geometric |   Compliance_RMS |   Compliance_TOPSIS |
+|:--------------------|---------:|-----------------:|-----------------:|---------:|---------:|-----------------------:|-----------------------:|------------------------:|-----------------------:|-----------------:|--------------------:|
+| Random Forest       | 0.7211   |         0.99553  |         0.923426 | 0.959478 | 0.982013 |               0.959478 |               0.982013 |                0.88753  |               0.879122 |         0.895346 |            1        |
+| Voting Ensemble     | 0.709529 |         0.99164  |         0.864491 | 0.928066 | 0.971187 |               0.928066 |               0.971187 |                0.869594 |               0.861557 |         0.877105 |            0.949168 |
+| Stacking Ensemble   | 0.701846 |         0.994305 |         0.869086 | 0.931696 | 0.972548 |               0.931696 |               0.972548 |                0.868696 |               0.859955 |         0.87683  |            0.946124 |
+| XGBoost             | 0.690258 |         0.981441 |         0.847468 | 0.914455 | 0.981596 |               0.914455 |               0.981596 |                0.862103 |               0.852515 |         0.871056 |            0.916847 |
+| Logistic Regression | 0.640236 |         0.996301 |         0.846401 | 0.921351 | 0.974049 |               0.921351 |               0.974049 |                0.845212 |               0.831346 |         0.857819 |            0.850837 |
+| Random Baseline     | 0.5      |         1        |         1        | 1        | 1        |               0.5      |               0.5      |                0.5      |               0.5      |         0.5      |            0        |
 
 Interpretation:
 - AURGA evaluates rank-based accuracy under progressive data removal.

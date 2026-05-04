@@ -1,8 +1,6 @@
 # RGE vs SHAP Comparison Report
 
-This report compares RGE feature ranking with SHAP feature ranking.
-
-SHAP values were computed using XGBoost built-in TreeSHAP contributions.
+This report compares RGE feature ranking with XGBoost TreeSHAP ranking.
 
 - Spearman correlation: 0.9838
 - Compared features: 61
