@@ -1,20 +1,16 @@
 # src/chatbot.py
 
-# Standard library imports:
-# - os: used to check whether required artifact files exist
-# - dedent: used to format the grounded LLM prompt more cleanly
 import os
+import re
+from pathlib import Path
 from textwrap import dedent
+from datetime import datetime
 
-# CrewAI tool decorator so the chatbot can also be used as a Crew tool
+import pandas as pd
 from crewai.tools import tool
 
-# Project-level configuration:
-# - current_config(): returns the current SAFE pipeline configuration
-# - crew_llm: shared LLM used for grounded question answering
 from src.config import current_config, crew_llm
 
-# Centralized artifact paths used by the chatbot
 from src.paths import (
     DATACARD_PATH,
     MODEL_CARD_PATH,
@@ -25,130 +21,142 @@ from src.paths import (
     CHATBOT_LOG_PATH,
 )
 
-# Helper utilities for safely reading files and extracting values
 from src.utils import (
     _safe_read_text,
     _safe_read_json,
     _extract_markdown_metric,
-    _extract_top_features,
-    _safe_str,
 )
 
-# Stores recent conversation turns for the current chatbot session
-# This is used both for context and for logging
+
 CHATBOT_HISTORY = []
+
+SAMPLE_QUESTIONS = [
+    "Why was the model approved or rejected?",
+    "What is the weakest dimension?",
+    "Which model has the best compliance?",
+    "Which variables are most important?",
+    "How robust is the model to noise?",
+    "What does the model card say about training?",
+    "Does the report mention calibration?",
+]
+
+
+def _extract_system_card_field(text, field_name):
+    """
+    Extract fields from system_card.md.
+
+    Supports:
+    **Decision:** REJECTED
+    **Final SAFE Score:** 0.692
+    """
+    if not text:
+        return None
+
+    pattern_inline = rf"\*\*{re.escape(field_name)}:\*\*\s*([^\n]+)"
+    match = re.search(pattern_inline, text)
+    if match:
+        return match.group(1).strip()
+
+    pattern_inline_alt = rf"\*\*{re.escape(field_name)}\*\*:\s*([^\n]+)"
+    match = re.search(pattern_inline_alt, text)
+    if match:
+        return match.group(1).strip()
+
+    pattern_section = rf"##\s+{re.escape(field_name)}\s*\n\s*\*\*([^\*]+)\*\*"
+    match = re.search(pattern_section, text)
+    if match:
+        return match.group(1).strip()
+
+    return None
+
+
+def _read_csv_as_markdown(path, max_rows=30):
+    """
+    Read a generated CSV artifact and return a compact markdown preview.
+    """
+    try:
+        if Path(path).exists():
+            df = pd.read_csv(path)
+            return df.head(max_rows).to_markdown(index=False)
+    except Exception as e:
+        return f"Could not read {Path(path).name}: {e}"
+
+    return ""
 
 
 def build_chatbot_context():
     """
-    Build a grounded context dictionary from the generated SAFE artifacts.
+    Load all generated SAFE artifacts used by the chatbot.
 
-    The chatbot does not answer from raw imagination. Instead, it reads the
-    saved outputs of the pipeline (data card, system card, evaluation report,
-    final report, sensitivity report, and model card) and extracts the fields
-    that are most useful for answering user questions.
+    The chatbot is grounded only in generated files.
     """
-    # Load config from the data card if available; otherwise fall back to current config
     config = _safe_read_json(DATACARD_PATH).get("config", current_config())
 
-    # Read the main report artifacts as plain text
     system_card = _safe_read_text(SYSTEM_CARD_PATH)
     evaluation_report = _safe_read_text(EVALUATION_REPORT_PATH)
     final_report = _safe_read_text(FINAL_REPORT_PATH)
     sensitivity_report = _safe_read_text(SENSITIVITY_REPORT_PATH)
     model_card = _safe_read_text(MODEL_CARD_PATH)
 
-    # Return both raw texts and extracted summary values
+    model_comparison_report = _safe_read_text("reports/model_comparison_report.md")
+    cv_results = _read_csv_as_markdown("reports/cv_results.csv", max_rows=40)
+
+    csv_artifacts = {
+        "classification_metrics.csv": _read_csv_as_markdown("reports/classification_metrics.csv"),
+        "confusion_matrix.csv": _read_csv_as_markdown("reports/confusion_matrix.csv"),
+        "calibration_curve.csv": _read_csv_as_markdown("reports/calibration_curve.csv"),
+        "rga_curve.csv": _read_csv_as_markdown("reports/rga_curve.csv"),
+        "rgr_gaussian_curve.csv": _read_csv_as_markdown("reports/rgr_gaussian_curve.csv"),
+        "rgr_swapping_curve.csv": _read_csv_as_markdown("reports/rgr_swapping_curve.csv"),
+        "rge_feature_importance.csv": _read_csv_as_markdown("reports/rge_feature_importance.csv", max_rows=25),
+        "rge_curve.csv": _read_csv_as_markdown("reports/rge_curve.csv"),
+        "shap_rge_comparison.csv": _read_csv_as_markdown("reports/shap_rge_comparison.csv", max_rows=25),
+        "model_metrics_comparison.csv": _read_csv_as_markdown("reports/model_metrics_comparison.csv"),
+        "compliance_score_comparison.csv": _read_csv_as_markdown("reports/compliance_score_comparison.csv"),
+    }
+
+    markdown_artifacts = {
+        "system_card.md": system_card,
+        "evaluation_report.md": evaluation_report,
+        "final_report.md": final_report,
+        "sensitivity_report.md": sensitivity_report,
+        "model_card.md": model_card,
+        "model_comparison_report.md": model_comparison_report,
+        "rga_report.md": _safe_read_text("reports/rga_report.md"),
+        "rgr_report.md": _safe_read_text("reports/rgr_report.md"),
+        "rge_report.md": _safe_read_text("reports/rge_report.md"),
+        "shap_rge_report.md": _safe_read_text("reports/shap_rge_report.md"),
+        "safe_paper_metrics_report.md": _safe_read_text("reports/safe_paper_metrics_report.md"),
+        "outlier_analysis_report.md": _safe_read_text("reports/outlier_analysis_report.md"),
+    }
+
     return {
         "config": config,
-        "system_card": system_card,
-        "evaluation_report": evaluation_report,
-        "final_report": final_report,
-        "sensitivity_report": sensitivity_report,
-        "model_card": model_card,
 
-        # Core final outputs
-        "decision": _extract_markdown_metric(system_card, "Decision"),
-        "final_safe_score": _extract_markdown_metric(system_card, "Final SAFE Score"),
+        "decision": (
+            _extract_system_card_field(system_card, "Decision")
+            or _extract_system_card_field(system_card, "Final Governance Decision")
+            or _extract_markdown_metric(system_card, "Decision")
+        ),
+        "final_safe_score": (
+            _extract_system_card_field(system_card, "Final SAFE Score")
+            or _extract_markdown_metric(system_card, "Final SAFE Score")
+        ),
+        "approval_threshold": config.get("approval_threshold"),
 
-        # Main evaluation metrics
         "auc": _extract_markdown_metric(evaluation_report, "Accuracy (AUC)"),
         "fairness_aggregate": _extract_markdown_metric(evaluation_report, "Fairness Aggregate"),
         "robustness_aggregate": _extract_markdown_metric(evaluation_report, "Robustness Aggregate"),
 
-        # Mitigation-related metrics
-        "mitigated_safe_score": _extract_markdown_metric(evaluation_report, "Mitigated SAFE Score"),
-        "mitigated_auc": _extract_markdown_metric(evaluation_report, "Mitigated AUC"),
-        "baseline_safe_score": _extract_markdown_metric(evaluation_report, "Baseline SAFE Score"),
-        "mitigated_fairness_aggregate": _extract_markdown_metric(evaluation_report, "Mitigated Fairness Aggregate"),
-        "mitigation_group": _extract_markdown_metric(evaluation_report, "Mitigation Applied To Group"),
-
-        # Short explainability summary
-        "top_features": _extract_top_features(final_report, k=5),
-
-        # Important config values the chatbot may need to explain
-        "approval_threshold": config.get("approval_threshold"),
-        "prediction_threshold": config.get("prediction_threshold"),
-        "weights": config.get("weights"),
-        "sensitive_feature": config.get("sensitive_feature"),
+        "markdown_artifacts": markdown_artifacts,
+        "csv_artifacts": csv_artifacts,
+        "cv_results": cv_results,
     }
-
-
-def _build_baseline_vs_mitigated_summary(ctx):
-    """
-    Build a short comparison between the baseline run and the mitigated run.
-    This is used for questions such as:
-    - compare baseline vs mitigated
-    - what changed after mitigation?
-    """
-    return (
-        f"Baseline SAFE score: {_safe_str(ctx.get('baseline_safe_score'))}. "
-        f"Mitigated SAFE score: {_safe_str(ctx.get('mitigated_safe_score'))}. "
-        f"Baseline AUC: {_safe_str(ctx.get('auc'))}. "
-        f"Mitigated AUC: {_safe_str(ctx.get('mitigated_auc'))}. "
-        f"Baseline fairness aggregate: {_safe_str(ctx.get('fairness_aggregate'))}. "
-        f"Mitigated fairness aggregate: {_safe_str(ctx.get('mitigated_fairness_aggregate'))}. "
-        f"Mitigation group: {_safe_str(ctx.get('mitigation_group'))}."
-    )
-
-
-def _build_decision_explanation(ctx):
-    """
-    Build a simple natural-language explanation of why the final
-    governance decision was approved or rejected.
-    """
-    return (
-        f"The final decision is {_safe_str(ctx.get('decision'))} because the final SAFE score "
-        f"({_safe_str(ctx.get('final_safe_score'))}) is below the approval threshold "
-        f"({_safe_str(ctx.get('approval_threshold'))}). "
-        f"The main contributing metrics were AUC={_safe_str(ctx.get('auc'))}, "
-        f"fairness aggregate={_safe_str(ctx.get('fairness_aggregate'))}, and "
-        f"robustness aggregate={_safe_str(ctx.get('robustness_aggregate'))}. "
-        f"In this run, fairness is the weakest of the three major aggregates."
-    )
-
-
-def _is_out_of_scope_query(q):
-    """
-    Check whether a user query is outside the SAFE chatbot's intended scope.
-
-    This chatbot is intentionally narrow: it should answer only questions
-    related to the generated SAFE artifacts and the run results.
-    """
-    allowed_keywords = [
-        "decision", "safe score", "auc", "accuracy", "fairness", "robust", "robustness",
-        "mitigation", "mitigated", "threshold", "weights", "config", "settings",
-        "sensitive feature", "top features", "feature importance", "explainability",
-        "sensitivity", "interaction", "effects", "baseline", "compare", "comparison",
-        "why", "reason", "approved", "rejected", "model", "report"
-    ]
-    return not any(k in q for k in allowed_keywords)
 
 
 def _format_chat_history(chat_history, max_turns=6):
     """
-    Convert recent chat history into a compact text block
-    for inclusion in the grounded LLM prompt.
+    Convert recent chat history into compact text.
     """
     if not chat_history:
         return "No prior conversation."
@@ -163,68 +171,298 @@ def _format_chat_history(chat_history, max_turns=6):
     return "\n".join(lines)
 
 
-def _build_grounded_prompt(query, ctx, chat_history):
+def _split_query_terms(query):
     """
-    Build the prompt used for the fallback LLM answer path.
+    Convert the user question into useful retrieval terms.
+    """
+    stopwords = {
+        "the", "is", "are", "was", "were", "what", "which", "why", "how",
+        "does", "do", "did", "about", "from", "with", "this", "that",
+        "tell", "me", "please", "give", "show", "explain", "say", "says",
+        "has", "have", "had", "been", "into", "for", "and", "or", "to",
+        "of", "in", "on", "a", "an",
+    }
 
-    The prompt includes:
-    - recent chat history
-    - core extracted metrics
-    - full report texts
-    - the user question
+    cleaned = (
+        query.lower()
+        .replace("?", " ")
+        .replace(",", " ")
+        .replace(".", " ")
+        .replace(":", " ")
+        .replace(";", " ")
+        .replace("-", " ")
+        .replace("_", " ")
+    )
 
-    This is designed to keep the LLM grounded in actual saved artifacts.
+    terms = []
+
+    for raw in cleaned.split():
+        term = raw.strip()
+
+        if len(term) <= 2:
+            continue
+
+        if term in stopwords:
+            continue
+
+        terms.append(term)
+
+    return terms
+
+
+def _expand_query_terms(query, terms):
+    """
+    Add domain synonyms so retrieval works for natural questions.
+    """
+    q = query.lower()
+    expanded = set(terms)
+
+    if any(x in q for x in ["weakest", "weakness", "lowest", "dimension"]):
+        expanded.update([
+            "weakest",
+            "fairness",
+            "aggregate",
+            "auc",
+            "robustness",
+            "decision",
+            "safe",
+        ])
+
+    if any(x in q for x in ["compliance", "topsis", "best model", "best compliance"]):
+        expanded.update([
+            "compliance",
+            "topsis",
+            "arithmetic",
+            "geometric",
+            "rms",
+            "aurga",
+            "aurgr",
+            "aurge",
+            "model",
+        ])
+
+    if any(x in q for x in ["important", "variables", "features", "explainability"]):
+        expanded.update([
+            "feature",
+            "features",
+            "importance",
+            "rge",
+            "shap",
+            "rge_importance",
+            "mean_abs_shap",
+            "duration",
+            "credit_amount",
+        ])
+
+    if any(x in q for x in ["noise", "robust", "robustness", "gaussian"]):
+        expanded.update([
+            "noise",
+            "gaussian",
+            "robustness",
+            "rgr",
+            "aurgr",
+            "dropout",
+            "missingness",
+        ])
+
+    if any(x in q for x in ["calibration", "brier", "probability"]):
+        expanded.update([
+            "calibration",
+            "brier",
+            "probability",
+            "fraction",
+            "positives",
+            "curve",
+        ])
+
+    if any(x in q for x in ["training", "trained", "model card", "cross validation", "cv"]):
+        expanded.update([
+            "training",
+            "trained",
+            "cross",
+            "validation",
+            "cv",
+            "best_cv_auc",
+            "hyperparameter",
+            "model",
+        ])
+
+    if any(x in q for x in ["approved", "rejected", "decision", "safe score"]):
+        expanded.update([
+            "decision",
+            "rejected",
+            "approved",
+            "safe",
+            "score",
+            "threshold",
+            "fairness",
+        ])
+
+    return list(expanded)
+
+
+def _score_line(line, query_terms):
+    """
+    Score one artifact line by query-term overlap.
+    """
+    line_lower = line.lower()
+    return sum(1 for term in query_terms if term.lower() in line_lower)
+
+
+def _include_artifact_by_intent(query, artifact_name):
+    """
+    Include important whole-table artifacts for known broad intents.
+
+    This is not answering by shortcut. It only decides which generated files
+    should be shown to the LLM as evidence.
+    """
+    q = query.lower()
+    name = artifact_name.lower()
+
+    if "compliance" in q or "topsis" in q:
+        return name in [
+            "compliance_score_comparison.csv",
+            "model_metrics_comparison.csv",
+            "safe_paper_metrics_report.md",
+        ]
+
+    if "important" in q or "variables" in q or "features" in q or "explainability" in q:
+        return name in [
+            "rge_feature_importance.csv",
+            "shap_rge_comparison.csv",
+            "rge_report.md",
+            "shap_rge_report.md",
+        ]
+
+    if "noise" in q or "robust" in q or "gaussian" in q:
+        return name in [
+            "evaluation_report.md",
+            "rgr_report.md",
+            "rgr_gaussian_curve.csv",
+            "rgr_swapping_curve.csv",
+            "safe_paper_metrics_report.md",
+        ]
+
+    if "calibration" in q or "brier" in q:
+        return name in [
+            "evaluation_report.md",
+            "classification_metrics.csv",
+            "calibration_curve.csv",
+            "final_report.md",
+        ]
+
+    if "training" in q or "model card" in q or "cross-validation" in q or "cross validation" in q:
+        return name in [
+            "model_card.md",
+            "model_comparison_report.md",
+            "cv_results.csv",
+        ]
+
+    if "weakest" in q or "decision" in q or "rejected" in q or "approved" in q:
+        return name in [
+            "system_card.md",
+            "evaluation_report.md",
+            "final_report.md",
+        ]
+
+    return False
+
+
+def _retrieve_artifact_evidence(query, ctx, max_lines=90):
+    """
+    Retrieve relevant evidence from generated artifacts.
+
+    This is the main RAG retrieval step.
+    """
+    terms = _split_query_terms(query)
+    terms = _expand_query_terms(query, terms)
+
+    if not terms:
+        return ""
+
+    artifact_texts = {}
+
+    artifact_texts.update(ctx.get("markdown_artifacts", {}))
+    artifact_texts.update(ctx.get("csv_artifacts", {}))
+
+    if ctx.get("cv_results"):
+        artifact_texts["cv_results.csv"] = ctx["cv_results"]
+
+    selected_blocks = []
+    scored_lines = []
+
+    for artifact_name, text in artifact_texts.items():
+        if not text:
+            continue
+
+        # For important artifacts, include the first part of the whole artifact/table.
+        if _include_artifact_by_intent(query, artifact_name):
+            preview_lines = text.splitlines()[:35]
+            selected_blocks.append(
+                f"\n### {artifact_name}\n" + "\n".join(preview_lines)
+            )
+
+        # Also score individual lines for more focused evidence.
+        for line in text.splitlines():
+            clean_line = line.strip()
+
+            if not clean_line:
+                continue
+
+            score = _score_line(clean_line, terms)
+
+            if score > 0:
+                scored_lines.append((score, artifact_name, clean_line))
+
+    scored_lines = sorted(scored_lines, key=lambda x: x[0], reverse=True)
+
+    evidence_lines = []
+
+    if selected_blocks:
+        evidence_lines.extend(selected_blocks)
+
+    for score, artifact_name, line in scored_lines[:max_lines]:
+        evidence_lines.append(f"[{artifact_name}] {line}")
+
+    if not evidence_lines:
+        return ""
+
+    return "\n".join(evidence_lines)
+
+
+def _build_rag_prompt(query, evidence, chat_history):
+    """
+    Build a grounded RAG prompt for the LLM.
     """
     return dedent(f"""
-    You are a SAFE AI results assistant.
-    Answer ONLY using the grounded information below.
-    Do not invent experiments, metrics, files, or conclusions that are not present.
-    If the answer is not supported by the grounded context, say that clearly.
+    You are a SAFE AI results chatbot.
 
-    Conversation history:
+    You MUST answer only using the retrieved evidence below.
+    Do not invent numbers, files, experiments, model behavior, or conclusions.
+    If the evidence is insufficient, say:
+    "I could not find enough evidence in the generated artifacts."
+
+    Recent conversation:
     {_format_chat_history(chat_history)}
 
-    Grounded context:
-    Decision: {_safe_str(ctx.get('decision'))}
-    Final SAFE score: {_safe_str(ctx.get('final_safe_score'))}
-    Approval threshold: {_safe_str(ctx.get('approval_threshold'))}
-    AUC: {_safe_str(ctx.get('auc'))}
-    Fairness aggregate: {_safe_str(ctx.get('fairness_aggregate'))}
-    Robustness aggregate: {_safe_str(ctx.get('robustness_aggregate'))}
-    Baseline SAFE score: {_safe_str(ctx.get('baseline_safe_score'))}
-    Mitigated SAFE score: {_safe_str(ctx.get('mitigated_safe_score'))}
-    Mitigated AUC: {_safe_str(ctx.get('mitigated_auc'))}
-    Mitigated fairness aggregate: {_safe_str(ctx.get('mitigated_fairness_aggregate'))}
-    Mitigation group: {_safe_str(ctx.get('mitigation_group'))}
-    Sensitive feature: {_safe_str(ctx.get('sensitive_feature'))}
-    Weights: {_safe_str(ctx.get('weights'))}
-    Prediction threshold: {_safe_str(ctx.get('prediction_threshold'))}
-    Top features: {_safe_str(ctx.get('top_features'))}
-
-    System card:
-    {ctx.get('system_card', '')}
-
-    Evaluation report:
-    {ctx.get('evaluation_report', '')}
-
-    Final report:
-    {ctx.get('final_report', '')}
-
-    Sensitivity report:
-    {ctx.get('sensitivity_report', '')}
+    Retrieved evidence from generated artifacts:
+    {evidence}
 
     User question:
     {query}
 
-    Answer in a concise, helpful way.
-    If relevant, explain the result in simple words.
+    Instructions:
+    - Answer clearly and directly.
+    - Mention the relevant numbers when available.
+    - Explain the result in simple words.
+    - If multiple generated artifacts disagree, say that the artifacts are inconsistent.
+    - Do not use outside knowledge.
     """).strip()
 
 
 def append_chatbot_log(user_query, assistant_answer, log_path=CHATBOT_LOG_PATH):
     """
-    Append one user/assistant exchange to the chatbot log file.
-    This creates a simple Markdown conversation history.
+    Save one chatbot exchange into the Markdown log.
     """
     with open(log_path, "a", encoding="utf-8") as f:
         f.write("## User\n")
@@ -234,35 +472,47 @@ def append_chatbot_log(user_query, assistant_answer, log_path=CHATBOT_LOG_PATH):
         f.write("---\n\n")
 
 
+def _run_sample_qa():
+    """
+    Run sample questions and save Q&A for the report/paper.
+    """
+    output_path = Path("reports") / "chatbot_sample_qa.md"
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("# SAFE Chatbot Sample Q&A\n\n")
+        f.write("These examples demonstrate artifact-grounded chatbot answers.\n\n")
+
+        for question in SAMPLE_QUESTIONS:
+            answer = answer_safe_chatbot_query(question)
+
+            f.write(f"## Question\n{question}\n\n")
+            f.write(f"## Answer\n{answer}\n\n")
+            f.write("---\n\n")
+
+    return f"Sample Q&A saved to {output_path}."
+
+
 def answer_safe_chatbot_query(query: str) -> str:
     """
     Main chatbot answering function.
 
-    Workflow:
-    1. Build grounded context from artifacts
-    2. Normalize user input
-    3. Check required files exist
-    4. Handle common supported question types with deterministic answers
-    5. If needed, fall back to a grounded LLM prompt
-    6. Save the result into history + log
+    This version avoids hard-coded question shortcuts.
+    It retrieves evidence from generated artifacts and lets the LLM answer
+    only from that evidence.
     """
     global CHATBOT_HISTORY
 
-    # Build context from generated SAFE artifacts
     ctx = build_chatbot_context()
 
-    # Normalize user input
     q = (query or "").strip()
     q_lower = q.lower()
 
-    # Required artifacts for meaningful grounded answers
     required_files = [
         str(SYSTEM_CARD_PATH),
         str(EVALUATION_REPORT_PATH),
         str(FINAL_REPORT_PATH),
     ]
 
-    # If core artifacts are missing, the chatbot should stop early
     missing = [f for f in required_files if not os.path.exists(f)]
     if missing:
         answer = (
@@ -273,168 +523,57 @@ def answer_safe_chatbot_query(query: str) -> str:
         append_chatbot_log(q, answer)
         return answer
 
-    # Greeting/help message
-    if any(x in q_lower for x in ["hello", "hi", "hey", "start", "help"]):
+    # Only basic commands are handled directly.
+    if q_lower in ["hello", "hi", "hey", "start", "help"]:
         answer = (
-            "SAFE chatbot is ready. You can ask about the final decision, SAFE score, AUC, fairness, "
-            "robustness, mitigation, configuration, sensitivity analysis, top features, "
-            "or compare baseline vs mitigated results."
+            "SAFE chatbot is ready. I answer only from generated project artifacts.\n\n"
+            "Sample questions:\n"
+            + "\n".join(f"- {question}" for question in SAMPLE_QUESTIONS)
+            + "\n\nType `run sample qa` to save sample Q&A for the report."
         )
         CHATBOT_HISTORY.append({"user": q, "assistant": answer})
         append_chatbot_log(q, answer)
         return answer
 
-    # Baseline vs mitigated comparison
-    if any(x in q_lower for x in ["compare", "comparison", "baseline vs mitigated", "baseline and mitigated"]):
-        answer = _build_baseline_vs_mitigated_summary(ctx)
+    if q_lower in ["run sample qa", "save sample qa", "sample qa"]:
+        answer = _run_sample_qa()
         CHATBOT_HISTORY.append({"user": q, "assistant": answer})
         append_chatbot_log(q, answer)
         return answer
 
-    # Explanation of final decision
-    if any(x in q_lower for x in ["why rejected", "why approved", "why", "reason", "explain decision"]):
-        answer = _build_decision_explanation(ctx)
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
+    evidence = _retrieve_artifact_evidence(q, ctx)
 
-    # Final governance decision
-    if any(x in q_lower for x in ["decision", "approved", "rejected", "governance"]):
+    if not evidence.strip():
         answer = (
-            f"Final governance decision: {ctx['decision']}. "
-            f"Final SAFE score: {ctx['final_safe_score']}."
+            "I could not find enough evidence in the generated artifacts to answer this question. "
+            "I am restricted to saved SAFE reports, model cards, system card, and generated CSV outputs."
         )
         CHATBOT_HISTORY.append({"user": q, "assistant": answer})
         append_chatbot_log(q, answer)
         return answer
 
-    # SAFE score questions
-    if "safe score" in q_lower or "final score" in q_lower:
-        answer = (
-            f"Final SAFE score: {ctx['final_safe_score']}. "
-            f"Baseline SAFE score: {ctx['baseline_safe_score']}. "
-            f"Mitigated SAFE score: {ctx['mitigated_safe_score']}."
-        )
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
+    prompt = _build_rag_prompt(
+        query=q,
+        evidence=evidence,
+        chat_history=CHATBOT_HISTORY,
+    )
 
-    # Performance questions
-    if "auc" in q_lower or "accuracy" in q_lower or "performance" in q_lower:
-        answer = (
-            f"AUC: {ctx['auc']}. "
-            f"Mitigated AUC: {ctx['mitigated_auc']}."
-        )
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
-
-    # Fairness questions
-    if "fairness" in q_lower:
-        answer = (
-            f"Fairness aggregate: {ctx['fairness_aggregate']}. "
-            f"Mitigated fairness aggregate: {ctx['mitigated_fairness_aggregate']}. "
-            "For more detail, check final_report.md for SPD, EOD, AOD, and DIR breakdown."
-        )
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
-
-    # Robustness questions
-    if "robust" in q_lower:
-        answer = (
-            f"Robustness aggregate: {ctx['robustness_aggregate']}. "
-            "The robustness report is based on noise, dropout, and missingness stress tests."
-        )
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
-
-    # Mitigation questions
-    if any(x in q_lower for x in ["mitigation", "mitigated", "post-mitigation"]):
-        answer = (
-            f"Mitigated SAFE score: {ctx['mitigated_safe_score']}. "
-            f"Mitigated AUC: {ctx['mitigated_auc']}. "
-            f"Mitigated fairness aggregate: {ctx['mitigated_fairness_aggregate']}. "
-            f"Mitigation group: {ctx['mitigation_group']}. "
-            "The mitigation used here is group-aware threshold adjustment."
-        )
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
-
-    # Configuration/policy questions
-    if any(x in q_lower for x in ["config", "settings", "threshold", "weights", "sensitive feature"]):
-        cfg = ctx["config"]
-        answer = (
-            "Current configuration: "
-            f"prediction_threshold={cfg.get('prediction_threshold')}, "
-            f"approval_threshold={cfg.get('approval_threshold')}, "
-            f"weights={cfg.get('weights')}, "
-            f"sensitive_feature={cfg.get('sensitive_feature')}, "
-            f"drop_sensitive_from_model={cfg.get('drop_sensitive_from_model')}."
-        )
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
-
-    # Feature importance / explainability questions
-    if any(x in q_lower for x in ["feature importance", "top features", "important features", "explainability"]):
-        if not ctx["top_features"]:
-            answer = "No feature-importance summary was found in final_report.md."
-            CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-            append_chatbot_log(q, answer)
-            return answer
-
-        formatted = ", ".join([f"{name} ({imp})" for name, imp in ctx["top_features"]])
-        answer = f"Top processed features from the report: {formatted}."
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
-
-    # Sensitivity / interaction questions
-    if any(x in q_lower for x in ["sensitivity", "interaction", "effects"]):
-        answer = (
-            "Sensitivity and interaction analysis were generated. "
-            "See sensitivity_report.md for scenario comparisons, main effects, and pairwise interactions."
-        )
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
-
-    # If the question is outside the SAFE chatbot scope, return a narrow fallback
-    if _is_out_of_scope_query(q_lower):
-        answer = (
-            "I am limited to grounded questions about this SAFE run. "
-            "Ask me about decision, SAFE score, AUC, fairness, robustness, mitigation, "
-            "configuration, sensitivity analysis, or baseline vs mitigated comparison."
-        )
-        CHATBOT_HISTORY.append({"user": q, "assistant": answer})
-        append_chatbot_log(q, answer)
-        return answer
-
-    # Fallback path:
-    # If no deterministic rule matched, ask the shared LLM to answer
-    # using the grounded prompt built from real artifacts only.
-    prompt = _build_grounded_prompt(q, ctx, CHATBOT_HISTORY)
     llm_answer = crew_llm.call(prompt)
 
     answer = llm_answer.strip() if llm_answer else (
-        "I could not produce a grounded answer from the current SAFE artifacts."
+        "I could not produce a grounded answer from the retrieved artifacts."
     )
 
     CHATBOT_HISTORY.append({"user": q, "assistant": answer})
     append_chatbot_log(q, answer)
+
     return answer
 
 
 @tool
 def safe_chatbot_tool(query: str):
     """
-    CrewAI-compatible tool wrapper around the SAFE chatbot.
-
-    This allows the chatbot to be invoked inside the multi-agent pipeline,
-    for example to confirm readiness after reports are generated.
+    CrewAI-compatible wrapper around the SAFE chatbot.
     """
     try:
         return answer_safe_chatbot_query(query)
@@ -444,14 +583,11 @@ def safe_chatbot_tool(query: str):
 
 def run_safe_chatbot_cli():
     """
-    Interactive command-line interface for the SAFE chatbot.
-
-    This is the standalone chatbot loop used after the pipeline finishes.
-    It allows the user to ask multiple grounded questions in sequence.
+    Interactive command-line SAFE chatbot.
     """
     print("\n--- SAFE Chatbot ---")
-    print("Ask about the final decision, SAFE score, fairness, robustness, mitigation, config, top features, or compare baseline vs mitigated.")
-    print("Type 'clear' to reset chat history or 'exit' to stop.\n")
+    print("Ask grounded questions about generated SAFE artifacts.")
+    print("Type 'help' for examples, 'clear' to reset history, or 'exit' to stop.\n")
 
     while True:
         try:
@@ -460,21 +596,17 @@ def run_safe_chatbot_cli():
             print("\nExiting SAFE Chatbot.")
             break
 
-        # Exit commands
         if user_query.lower() in {"exit", "quit", "q"}:
             print("Exiting SAFE Chatbot.")
             break
 
-        # Reset current conversation memory
         if user_query.lower() == "clear":
             CHATBOT_HISTORY.clear()
             print("Chat history cleared.\n")
             continue
 
-        # Ignore empty input
         if not user_query:
             continue
 
-        # Answer the user question and print the result
         answer = answer_safe_chatbot_query(user_query)
         print(f"\n{answer}\n")
