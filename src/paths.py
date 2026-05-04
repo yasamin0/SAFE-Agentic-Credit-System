@@ -134,6 +134,57 @@ RGE_IMPORTANCE_PLOT_PATH = REPORTS_DIR / "rge_feature_importance.png"
 
 RGE_REPORT_PATH = REPORTS_DIR / "rge_report.md"
 
+# ------------------------------------------------------------
+# MULTI-MODEL ARTIFACT PATHS
+# ------------------------------------------------------------
+# These paths store the additional models needed for the SAFE AI paper comparison.
+
+MODEL_LR_PATH = MODELS_DIR / "model_logistic_regression.pkl"
+MODEL_RF_PATH = MODELS_DIR / "model_random_forest.pkl"
+MODEL_XGB_PATH = MODELS_DIR / "model_xgboost.pkl"
+MODEL_VOTING_PATH = MODELS_DIR / "model_voting_ensemble.pkl"
+MODEL_STACKING_PATH = MODELS_DIR / "model_stacking_ensemble.pkl"
+MODEL_RANDOM_BASELINE_PATH = MODELS_DIR / "model_random_baseline.pkl"
+
+ALL_MODEL_PATHS = {
+    "Logistic Regression": MODEL_LR_PATH,
+    "Random Forest": MODEL_RF_PATH,
+    "XGBoost": MODEL_XGB_PATH,
+    "Voting Ensemble": MODEL_VOTING_PATH,
+    "Stacking Ensemble": MODEL_STACKING_PATH,
+    "Random Baseline": MODEL_RANDOM_BASELINE_PATH,
+}
+
+
+# ------------------------------------------------------------
+# RGA / RANK-BASED ACCURACY ARTIFACT PATHS
+# ------------------------------------------------------------
+# RGA measures predictive accuracy using a rank-based curve.
+
+RGA_CURVE_CSV_PATH = REPORTS_DIR / "rga_curve.csv"
+RGA_PLOT_PATH = REPORTS_DIR / "rga_curve.png"
+RGA_REPORT_PATH = REPORTS_DIR / "rga_report.md"
+
+
+# ------------------------------------------------------------
+# SHAP VS RGE COMPARISON ARTIFACT PATHS
+# ------------------------------------------------------------
+# These files compare RGE feature ranking with SHAP feature ranking.
+
+SHAP_RGE_COMPARISON_CSV_PATH = REPORTS_DIR / "shap_rge_comparison.csv"
+SHAP_RGE_REPORT_PATH = REPORTS_DIR / "shap_rge_report.md"
+
+
+# ------------------------------------------------------------
+# SAFE AI PAPER COMPLIANCE SCORE ARTIFACT PATHS
+# ------------------------------------------------------------
+# These files store the final comparison tables and plots across models.
+
+MODEL_METRICS_COMPARISON_CSV_PATH = REPORTS_DIR / "model_metrics_comparison.csv"
+COMPLIANCE_SCORE_CSV_PATH = REPORTS_DIR / "compliance_score_comparison.csv"
+COMPLIANCE_SCORE_PLOT_PATH = REPORTS_DIR / "compliance_score_comparison.png"
+SAFE_PAPER_METRICS_REPORT_PATH = REPORTS_DIR / "safe_paper_metrics_report.md"
+
 def ensure_directories():
     """
     Ensure that all required output directories exist before the pipeline runs.

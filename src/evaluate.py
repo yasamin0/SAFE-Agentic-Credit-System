@@ -62,6 +62,17 @@ from src.paths import (
     RGE_PLOT_PATH,
     RGE_IMPORTANCE_PLOT_PATH,
     RGE_REPORT_PATH,
+
+    ALL_MODEL_PATHS,
+    RGA_CURVE_CSV_PATH,
+    RGA_PLOT_PATH,
+    RGA_REPORT_PATH,
+    SHAP_RGE_COMPARISON_CSV_PATH,
+    SHAP_RGE_REPORT_PATH,
+    MODEL_METRICS_COMPARISON_CSV_PATH,
+    COMPLIANCE_SCORE_CSV_PATH,
+    COMPLIANCE_SCORE_PLOT_PATH,
+    SAFE_PAPER_METRICS_REPORT_PATH,
 )
 
 # Utility helpers
@@ -77,6 +88,16 @@ from src.rge import (
     compute_rge_curve,
     save_rge_curve_plot,
     save_rge_importance_plot,
+)
+
+from src.rga import compute_rga_curve, save_rga_plot
+
+from src.shap_compare import compare_rge_with_shap
+
+from src.compliance import (
+    run_model_metric_comparison,
+    compute_compliance_scores,
+    save_compliance_plot,
 )
 
 def _compute_robustness_metrics(model, X_test, y_test, numeric_cols):
@@ -789,6 +810,87 @@ def evaluation_and_risk_tool(description: str):
             f.write(f"- RGE curve plot: {RGE_PLOT_PATH.name}\n")
             f.write(f"- RGE importance plot: {RGE_IMPORTANCE_PLOT_PATH.name}\n")
 
+
+        # ------------------------------------------------------------
+        # RANK-BASED ACCURACY: RGA / AURGA
+        # ------------------------------------------------------------
+        rga_curve_df, aurga = compute_rga_curve(
+            model=model,
+            X_test=X_test,
+            y_test=y_test,
+        )
+
+        rga_curve_df.to_csv(RGA_CURVE_CSV_PATH, index=False)
+        save_rga_plot(rga_curve_df, RGA_PLOT_PATH)
+
+        with open(RGA_REPORT_PATH, "w", encoding="utf-8") as f:
+            f.write("# Rank Graduation Accuracy Report\n\n")
+            f.write("This report implements the paper-style RGA accuracy analysis.\n\n")
+            f.write("## Results\n")
+            f.write(f"- AURGA: {aurga:.4f}\n")
+            f.write(f"- RGA curve CSV: {RGA_CURVE_CSV_PATH.name}\n")
+            f.write(f"- RGA curve plot: {RGA_PLOT_PATH.name}\n")
+
+        # ------------------------------------------------------------
+        # RGE VS SHAP COMPARISON
+        # ------------------------------------------------------------
+        shap_comparison_result = compare_rge_with_shap(
+            model=model,
+            X_test=X_test,
+            rge_importance_df=rge_importance_df,
+            output_csv_path=SHAP_RGE_COMPARISON_CSV_PATH,
+            output_report_path=SHAP_RGE_REPORT_PATH,
+        )
+
+        # ------------------------------------------------------------
+        # MULTI-MODEL SAFE AI PAPER METRIC COMPARISON
+        # ------------------------------------------------------------
+        model_metrics_df = run_model_metric_comparison(
+            all_model_paths=ALL_MODEL_PATHS,
+            X_test=X_test,
+            y_test=y_test,
+            rgr_columns=rgr_columns,
+            random_state=RANDOM_STATE,
+        )
+
+        compliance_df = compute_compliance_scores(model_metrics_df)
+
+        model_metrics_df.to_csv(MODEL_METRICS_COMPARISON_CSV_PATH, index=False)
+        compliance_df.to_csv(COMPLIANCE_SCORE_CSV_PATH, index=False)
+
+        save_compliance_plot(
+            compliance_df=compliance_df,
+            output_path=COMPLIANCE_SCORE_PLOT_PATH,
+        )
+
+        with open(SAFE_PAPER_METRICS_REPORT_PATH, "w", encoding="utf-8") as f:
+            f.write("# SAFE AI Paper Metrics Report\n\n")
+            f.write("This report summarizes the implemented SAFE AI paper metrics across multiple models.\n\n")
+
+            f.write("## Metrics Implemented\n")
+            f.write("- AURGA for rank-based accuracy\n")
+            f.write("- AURGR for rank-based robustness\n")
+            f.write("- AURGE for rank-based explainability\n")
+            f.write("- Compliance Score using Arithmetic Mean, Geometric Mean, RMS, and TOPSIS\n\n")
+
+            f.write("## Current Governance Model Metrics\n")
+            f.write(f"- AURGA: {aurga:.4f}\n")
+            f.write(f"- AURGR Gaussian: {aurgr_gaussian:.4f}\n")
+            f.write(f"- AURGR Swapping: {aurgr_swapping:.4f}\n")
+            f.write(f"- AURGE: {aurge:.4f}\n\n")
+
+            f.write("## SHAP vs RGE\n")
+            f.write(f"- SHAP comparison status: {shap_comparison_result.get('status')}\n")
+            f.write(f"- Spearman correlation: {shap_comparison_result.get('spearman_corr')}\n\n")
+
+            f.write("## Model Metrics Comparison\n\n")
+            f.write(model_metrics_df.to_markdown(index=False))
+            f.write("\n\n")
+
+            f.write("## Compliance Score Comparison\n\n")
+            f.write(compliance_df.to_markdown(index=False))
+            f.write("\n")
+
         # ------------------------------------------------------------
         # EXPLAINABILITY SNAPSHOT
         # ------------------------------------------------------------
@@ -822,6 +924,12 @@ def evaluation_and_risk_tool(description: str):
 - **RGE Feature Importance File**: {RGE_IMPORTANCE_CSV_PATH.name}
 - **RGE Curve File**: {RGE_CURVE_CSV_PATH.name}
 - **RGE Plot Files**: {RGE_PLOT_PATH.name}, {RGE_IMPORTANCE_PLOT_PATH.name}
+- **AURGA**: {aurga:.4f}
+- **SHAP-RGE Spearman Correlation**: {shap_comparison_result.get('spearman_corr')}
+- **Model Metrics Comparison File**: {MODEL_METRICS_COMPARISON_CSV_PATH.name}
+- **Compliance Score File**: {COMPLIANCE_SCORE_CSV_PATH.name}
+- **Compliance Score Plot**: {COMPLIANCE_SCORE_PLOT_PATH.name}
+- **SAFE Paper Metrics Report**: {SAFE_PAPER_METRICS_REPORT_PATH.name}
 - **Mitigation Applied To Group**: {disadvantaged_group}
 - **Status**: Metrics extracted for weighting, mitigation, sensitivity analysis, and explainability.
 """
@@ -936,6 +1044,25 @@ Top 10 least important processed features by RGE:
 ## Explainability Snapshot: XGBoost Feature Importance
 Top 10 most important processed features by XGBoost importance:
 {importance_df.head(10).to_markdown(index=False)}
+
+## SAFE AI Paper Metrics: Multi-Model Compliance Comparison
+- AURGA: {aurga:.4f}
+- AURGR Gaussian Noise: {aurgr_gaussian:.4f}
+- AURGR Percentile Swapping: {aurgr_swapping:.4f}
+- AURGE: {aurge:.4f}
+- SHAP-RGE Spearman correlation: {shap_comparison_result.get('spearman_corr')}
+
+Model metrics comparison:
+{model_metrics_df.to_markdown(index=False)}
+
+Compliance score comparison:
+{compliance_df.to_markdown(index=False)}
+
+Interpretation:
+- AURGA evaluates rank-based accuracy under progressive data removal.
+- AURGR evaluates rank-based robustness under increasing perturbation intensity.
+- AURGE evaluates rank-based explainability under progressive feature removal.
+- The final Compliance Score combines AURGA, AURGR, and AURGE using Arithmetic Mean, Geometric Mean, RMS, and TOPSIS.
 
 ## Auditor Notes
 - Multi-metric fairness and robustness aggregation are enabled.

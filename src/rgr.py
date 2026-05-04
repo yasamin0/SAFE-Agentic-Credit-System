@@ -21,6 +21,9 @@
 
 import numpy as np
 import pandas as pd
+# Use non-GUI backend for saving plots safely in automated runs.
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 

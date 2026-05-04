@@ -1,7 +1,10 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
+# Use non-GUI backend for saving plots safely in automated runs.
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 def _rank_graduation_similarity(reference_scores, comparison_scores):
     """

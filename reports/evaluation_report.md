@@ -19,5 +19,11 @@
 - **RGE Feature Importance File**: rge_feature_importance.csv
 - **RGE Curve File**: rge_curve.csv
 - **RGE Plot Files**: rge_curve.png, rge_feature_importance.png
+- **AURGA**: 0.7252
+- **SHAP-RGE Spearman Correlation**: 0.9359205941635693
+- **Model Metrics Comparison File**: model_metrics_comparison.csv
+- **Compliance Score File**: compliance_score_comparison.csv
+- **Compliance Score Plot**: compliance_score_comparison.png
+- **SAFE Paper Metrics Report**: safe_paper_metrics_report.md
 - **Mitigation Applied To Group**: male mar/wid
 - **Status**: Metrics extracted for weighting, mitigation, sensitivity analysis, and explainability.

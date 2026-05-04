@@ -1,5 +1,8 @@
 # main.py
-
+# Force matplotlib to use a non-GUI backend.
+# This prevents Tkinter/main-thread errors when saving plots inside CrewAI tools.
+import os
+os.environ["MPLBACKEND"] = "Agg"
 # CrewAI core classes:
 # - Agent: defines a role-based worker in the pipeline
 # - Task: defines a unit of work assigned to an agent
