@@ -87,16 +87,18 @@ data_agent = Agent(
 # and generating the model artifact and model card.
 modeling_agent = Agent(
     role="Machine Learning Model Builder and Validator",
-    goal="Train highly optimized predictive models (e.g., Logistic Regression and XGBoost) and select the best model based on cross-validation metrics. Output a comprehensive Model Card.",
+    goal=(
+        "Train model candidates using model_training_tool and report only tool-generated artifacts. "
+        "Never fabricate metrics, file paths, or model-card content."
+    ),
     backstory=(
-        "A seasoned ML engineer focused on credit risk assessment. "
-        "They utilize state-of-the-art libraries to perform hyperparameter tuning "
-        "and establish strong performance baselines."
+        "A strict ML engineering agent for credit-risk modeling. "
+        "It only reports results produced by the tool and saved project artifacts."
     ),
     tools=[model_training_tool],
     llm=crew_llm,
     allow_delegation=False,
-    verbose=True
+    verbose=True,
 )
 
 # 3) EVALUATION AGENT
@@ -170,10 +172,26 @@ task_data_prep = Task(
 # TASK 2: MODEL TRAINING
 # This task depends on Task 1 because training requires processed data.
 task_model_train = Task(
-    description="Using the cleaned data from Task 1, execute the model_training_tool to train and select the best classification model and save the 'best_model.pkl' artifact.",
-    expected_output="A confirmation that the best model has been saved and the path to the generated Model Card.",
+    description=(
+        "Using the cleaned data from Task 1, call model_training_tool exactly once. "
+        "The tool trains multiple model candidates, performs cross-validation and hyperparameter search, "
+        "saves the governance model as best_model.pkl, and generates the real model card.\n\n"
+        "Rules:\n"
+        "- Do not invent model metrics.\n"
+        "- Do not write or summarize a fake model card.\n"
+        "- Do not mention generated_model_card.txt or /model_card/best_model_card.html.\n"
+        "- Do not create example accuracy, precision, recall, or F1 values.\n"
+        "- Only confirm the real artifacts created by the tool.\n"
+        "- Real model card path: docs/model_card.md.\n"
+        "- Real CV results path: reports/cv_results.csv."
+    ),
+    expected_output=(
+        "A short confirmation only: model candidates trained, cross-validation and hyperparameter "
+        "search completed, best_model.pkl saved, docs/model_card.md generated, and "
+        "reports/cv_results.csv generated. No fabricated metrics."
+    ),
     agent=modeling_agent,
-    context=[task_data_prep]
+    context=[task_data_prep],
 )
 
 # TASK 3: FULL SAFE EVALUATION
