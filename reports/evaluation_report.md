@@ -1,26 +1,36 @@
 ### Detailed SAFE AI Evaluation Report
-- **Accuracy (AUC)**: 0.7800
-- **Fairness Aggregate**: 0.5399
-- **Robustness Aggregate**: 0.9636
-- **Baseline SAFE Score**: 0.6967
+- **Accuracy (AUC)**: 0.7767
+- **PR-AUC**: 0.5615
+- **Precision**: 0.6562
+- **Recall**: 0.3500
+- **F1 Score**: 0.4565
+- **Brier Score**: 0.1689
+- **Classification Metrics File**: classification_metrics.csv
+- **Confusion Matrix File**: confusion_matrix.csv
+- **Calibration Curve File**: calibration_curve.csv
+- **Confusion Matrix Plot**: confusion_matrix.png
+- **Calibration Curve Plot**: calibration_curve.png
+- **Fairness Aggregate**: 0.5363
+- **Robustness Aggregate**: 0.9566
+- **Baseline SAFE Score**: 0.6924
 - **Ensemble Auditing Enabled**: True
 - **Auditors Used**: performance_auditor, fairness_auditor, robustness_auditor
-- **Mitigated AUC**: 0.6762
-- **Mitigated Fairness Aggregate**: 0.5399
-- **Mitigated SAFE Score**: 0.6655
-- **Fairness Components**: SPD=0.6389, EOD=0.6667, AOD=0.6667, DIR=0.1875
-- **Robustness Components**: Noise=0.9966, Dropout=0.8941, Missingness=1.0000
-- **AURGR Gaussian Noise**: 0.9664
-- **AURGR Percentile Swapping**: 0.8162
-- **RGR Aggregate**: 0.8913
+- **Mitigated AUC**: 0.6357
+- **Mitigated Fairness Aggregate**: 0.5363
+- **Mitigated SAFE Score**: 0.6502
+- **Fairness Components**: SPD=0.6389, EOD=0.6569, AOD=0.6618, DIR=0.1875
+- **Robustness Components**: Noise=1.0000, Dropout=0.8708, Missingness=0.9989
+- **AURGR Gaussian Noise**: 0.9814
+- **AURGR Percentile Swapping**: 0.8475
+- **RGR Aggregate**: 0.9145
 - **RGR Curve Files**: rgr_gaussian_curve.csv, rgr_swapping_curve.csv
 - **RGR Plot Files**: rgr_gaussian_curve.png, rgr_swapping_curve.png
-- **AURGE**: 0.9658
+- **AURGE**: 0.9816
 - **RGE Feature Importance File**: rge_feature_importance.csv
 - **RGE Curve File**: rge_curve.csv
 - **RGE Plot Files**: rge_curve.png, rge_feature_importance.png
-- **AURGA**: 0.7252
-- **SHAP-RGE Spearman Correlation**: 0.9359205941635693
+- **AURGA**: 0.7012
+- **SHAP-RGE Spearman Correlation**: 0.983841540319698
 - **Model Metrics Comparison File**: model_metrics_comparison.csv
 - **Compliance Score File**: compliance_score_comparison.csv
 - **Compliance Score Plot**: compliance_score_comparison.png

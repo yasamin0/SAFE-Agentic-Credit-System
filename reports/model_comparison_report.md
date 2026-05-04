@@ -1,8 +1,4 @@
-# Model Card
-
-## Training Summary
-
-Multiple model candidates were trained and compared using 3-fold stratified cross-validation.
+# Model Comparison Report
 
 | model               |   best_cv_auc | best_params                                                 | artifact                      |
 |:--------------------|--------------:|:------------------------------------------------------------|:------------------------------|
@@ -12,9 +8,3 @@ Multiple model candidates were trained and compared using 3-fold stratified cros
 | Stacking Ensemble   |      0.779621 | default                                                     | model_stacking_ensemble.pkl   |
 | Logistic Regression |      0.77489  | {'C': 0.1}                                                  | model_logistic_regression.pkl |
 | Random Baseline     |      0.5      | default                                                     | model_random_baseline.pkl     |
-
-## Operational Governance Model
-
-The operational model saved as `best_model.pkl` is XGBoost for compatibility with the existing SAFE pipeline.
-
-Detailed CV results are saved to `cv_results.csv`.

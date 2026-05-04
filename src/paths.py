@@ -109,6 +109,43 @@ SENSITIVITY_REPORT_PATH = REPORTS_DIR / "sensitivity_report.md"
 CHATBOT_LOG_PATH = REPORTS_DIR / "chatbot_log.md"
 
 # ------------------------------------------------------------
+# DATA AGENT IMPROVEMENT ARTIFACT PATHS
+# ------------------------------------------------------------
+# These artifacts complete the DataAgent with EDA, outlier analysis,
+# and combined clean train/test files.
+
+FIGURES_DIR = REPORTS_DIR / "figures"
+
+EDA_TARGET_DISTRIBUTION_PLOT_PATH = FIGURES_DIR / "eda_target_distribution.png"
+EDA_NUMERIC_DISTRIBUTION_PLOT_PATH = FIGURES_DIR / "eda_numeric_distributions.png"
+EDA_MISSING_VALUES_PLOT_PATH = FIGURES_DIR / "eda_missing_values.png"
+
+OUTLIER_REPORT_PATH = REPORTS_DIR / "outlier_analysis_report.md"
+
+CLEAN_TRAIN_FULL_PATH = PROCESSED_DIR / "clean_train.csv"
+CLEAN_TEST_FULL_PATH = PROCESSED_DIR / "clean_test.csv"
+
+
+# ------------------------------------------------------------
+# MODELING AGENT IMPROVEMENT ARTIFACT PATHS
+# ------------------------------------------------------------
+# These artifacts store CV and model-selection outputs.
+
+CV_RESULTS_PATH = REPORTS_DIR / "cv_results.csv"
+MODEL_COMPARISON_REPORT_PATH = REPORTS_DIR / "model_comparison_report.md"
+
+
+# ------------------------------------------------------------
+# EVAL AGENT IMPROVEMENT ARTIFACT PATHS
+# ------------------------------------------------------------
+# These artifacts store additional classification/calibration outputs.
+
+CLASSIFICATION_METRICS_CSV_PATH = REPORTS_DIR / "classification_metrics.csv"
+CONFUSION_MATRIX_CSV_PATH = REPORTS_DIR / "confusion_matrix.csv"
+CONFUSION_MATRIX_PLOT_PATH = FIGURES_DIR / "confusion_matrix.png"
+CALIBRATION_CURVE_CSV_PATH = REPORTS_DIR / "calibration_curve.csv"
+CALIBRATION_CURVE_PLOT_PATH = FIGURES_DIR / "calibration_curve.png"
+# ------------------------------------------------------------
 # RGR / RANK-BASED ROBUSTNESS ARTIFACT PATHS
 # ------------------------------------------------------------
 
@@ -206,5 +243,6 @@ def ensure_directories():
         DOCS_DIR,
         MODELS_DIR,
         REPORTS_DIR,
+        FIGURES_DIR,
     ]:
         path.mkdir(parents=True, exist_ok=True)

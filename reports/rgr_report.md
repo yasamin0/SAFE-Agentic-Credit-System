@@ -10,9 +10,9 @@ This report implements the paper-style RGR robustness analysis.
 - AURGR is the area under the RGR curve.
 
 ## Results
-- AURGR Gaussian Noise: 0.9664
-- AURGR Percentile Swapping: 0.8162
-- RGR Aggregate: 0.8913
+- AURGR Gaussian Noise: 0.9814
+- AURGR Percentile Swapping: 0.8475
+- RGR Aggregate: 0.9145
 
 ## Output Files
 - Gaussian curve CSV: rgr_gaussian_curve.csv

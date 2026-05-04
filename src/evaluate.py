@@ -10,7 +10,16 @@ import pandas as pd
 from crewai.tools import tool
 
 # Metric used for predictive performance evaluation
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import (
+    roc_auc_score,
+    average_precision_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    confusion_matrix,
+    brier_score_loss,
+)
+from sklearn.calibration import calibration_curve
 
 # Used in sensitivity analysis to reconstruct a raw-data test split
 from sklearn.model_selection import train_test_split
@@ -73,6 +82,12 @@ from src.paths import (
     COMPLIANCE_SCORE_CSV_PATH,
     COMPLIANCE_SCORE_PLOT_PATH,
     SAFE_PAPER_METRICS_REPORT_PATH,
+
+    CLASSIFICATION_METRICS_CSV_PATH,
+    CONFUSION_MATRIX_CSV_PATH,
+    CONFUSION_MATRIX_PLOT_PATH,
+    CALIBRATION_CURVE_CSV_PATH,
+    CALIBRATION_CURVE_PLOT_PATH,
 )
 
 # Utility helpers
@@ -99,6 +114,9 @@ from src.compliance import (
     compute_compliance_scores,
     save_compliance_plot,
 )
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 def _compute_robustness_metrics(model, X_test, y_test, numeric_cols):
     """
@@ -541,6 +559,40 @@ def _interaction_analysis(model, X_test, y_test, config, numeric_cols):
 
     return df, effect_df, interaction_df
 
+def _compute_classification_and_calibration_metrics(y_true, y_probs, threshold):
+    """
+    Compute additional classification and calibration metrics.
+    """
+    y_pred = (y_probs >= threshold).astype(int)
+
+    metrics = {
+        "pr_auc": float(average_precision_score(y_true, y_probs)),
+        "precision": float(precision_score(y_true, y_pred, zero_division=0)),
+        "recall": float(recall_score(y_true, y_pred, zero_division=0)),
+        "f1": float(f1_score(y_true, y_pred, zero_division=0)),
+        "brier_score": float(brier_score_loss(y_true, y_probs)),
+    }
+
+    cm = confusion_matrix(y_true, y_pred)
+    cm_df = pd.DataFrame(
+        cm,
+        index=["actual_0", "actual_1"],
+        columns=["pred_0", "pred_1"]
+    )
+
+    frac_pos, mean_pred = calibration_curve(
+        y_true,
+        y_probs,
+        n_bins=10,
+        strategy="uniform"
+    )
+
+    calibration_df = pd.DataFrame({
+        "mean_predicted_probability": mean_pred,
+        "fraction_of_positives": frac_pos,
+    })
+
+    return metrics, cm_df, calibration_df
 
 @tool
 def evaluation_and_risk_tool(description: str):
@@ -572,6 +624,51 @@ def evaluation_and_risk_tool(description: str):
         # Baseline predictive performance
         auc_score = float(roc_auc_score(y_test, y_probs))
 
+        # Additional classification and calibration metrics.
+        classification_metrics, confusion_matrix_df, calibration_df = _compute_classification_and_calibration_metrics(
+            y_true=y_test,
+            y_probs=y_probs,
+            threshold=PRED_THRESHOLD,
+        )
+
+        classification_metrics_df = pd.DataFrame([classification_metrics])
+        classification_metrics_df.to_csv(CLASSIFICATION_METRICS_CSV_PATH, index=False)
+
+        confusion_matrix_df.to_csv(CONFUSION_MATRIX_CSV_PATH)
+
+        calibration_df.to_csv(CALIBRATION_CURVE_CSV_PATH, index=False)
+
+        # Save confusion matrix plot.
+        plt.figure(figsize=(5, 4))
+        plt.imshow(confusion_matrix_df.values)
+        plt.title("Confusion Matrix")
+        plt.xticks([0, 1], ["Pred 0", "Pred 1"])
+        plt.yticks([0, 1], ["Actual 0", "Actual 1"])
+
+        for i in range(confusion_matrix_df.shape[0]):
+            for j in range(confusion_matrix_df.shape[1]):
+                plt.text(j, i, confusion_matrix_df.values[i, j], ha="center", va="center")
+
+        plt.tight_layout()
+        plt.savefig(CONFUSION_MATRIX_PLOT_PATH, dpi=200)
+        plt.close()
+
+        # Save calibration curve plot.
+        plt.figure(figsize=(6, 5))
+        plt.plot(
+            calibration_df["mean_predicted_probability"],
+            calibration_df["fraction_of_positives"],
+            marker="o",
+            label="Model"
+        )
+        plt.plot([0, 1], [0, 1], linestyle="--", label="Perfect calibration")
+        plt.xlabel("Mean predicted probability")
+        plt.ylabel("Fraction of positives")
+        plt.title("Calibration Curve")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(CALIBRATION_CURVE_PLOT_PATH, dpi=200)
+        plt.close()
         # Load preprocessing metadata from the Data Card
         with open(DATACARD_PATH, "r", encoding="utf-8") as f:
             dc = json.load(f)
@@ -905,6 +1002,16 @@ def evaluation_and_risk_tool(description: str):
         # ------------------------------------------------------------
         report_content = f"""### Detailed SAFE AI Evaluation Report
 - **Accuracy (AUC)**: {auc_score:.4f}
+- **PR-AUC**: {classification_metrics['pr_auc']:.4f}
+- **Precision**: {classification_metrics['precision']:.4f}
+- **Recall**: {classification_metrics['recall']:.4f}
+- **F1 Score**: {classification_metrics['f1']:.4f}
+- **Brier Score**: {classification_metrics['brier_score']:.4f}
+- **Classification Metrics File**: {CLASSIFICATION_METRICS_CSV_PATH.name}
+- **Confusion Matrix File**: {CONFUSION_MATRIX_CSV_PATH.name}
+- **Calibration Curve File**: {CALIBRATION_CURVE_CSV_PATH.name}
+- **Confusion Matrix Plot**: {CONFUSION_MATRIX_PLOT_PATH.name}
+- **Calibration Curve Plot**: {CALIBRATION_CURVE_PLOT_PATH.name}
 - **Fairness Aggregate**: {fairness_metrics['fairness_aggregate']:.4f}
 - **Robustness Aggregate**: {robustness_metrics['robustness_aggregate']:.4f}
 - **Baseline SAFE Score**: {baseline_safe:.4f}
@@ -952,6 +1059,19 @@ def evaluation_and_risk_tool(description: str):
 
 ## Accuracy
 - AUC: {auc_score:.4f}
+
+## Classification Metrics
+- PR-AUC: {classification_metrics['pr_auc']:.4f}
+- Precision: {classification_metrics['precision']:.4f}
+- Recall: {classification_metrics['recall']:.4f}
+- F1 Score: {classification_metrics['f1']:.4f}
+- Brier Score: {classification_metrics['brier_score']:.4f}
+
+Confusion matrix:
+{confusion_matrix_df.to_markdown()}
+
+Calibration curve data:
+{calibration_df.to_markdown(index=False)}
 
 ## Fairness Aggregation
 - SPD gap: {fairness_metrics['spd_gap']:.4f}
