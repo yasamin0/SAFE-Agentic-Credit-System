@@ -120,6 +120,20 @@ RGR_SWAPPING_PLOT_PATH = REPORTS_DIR / "rgr_swapping_curve.png"
 
 RGR_REPORT_PATH = REPORTS_DIR / "rgr_report.md"
 
+# ------------------------------------------------------------
+# RGE / RANK-BASED EXPLAINABILITY ARTIFACT PATHS
+# ------------------------------------------------------------
+# These paths store the paper-style explainability outputs.
+# RGE measures how prediction rankings change when features are removed.
+
+RGE_IMPORTANCE_CSV_PATH = REPORTS_DIR / "rge_feature_importance.csv"
+RGE_CURVE_CSV_PATH = REPORTS_DIR / "rge_curve.csv"
+
+RGE_PLOT_PATH = REPORTS_DIR / "rge_curve.png"
+RGE_IMPORTANCE_PLOT_PATH = REPORTS_DIR / "rge_feature_importance.png"
+
+RGE_REPORT_PATH = REPORTS_DIR / "rge_report.md"
+
 def ensure_directories():
     """
     Ensure that all required output directories exist before the pipeline runs.

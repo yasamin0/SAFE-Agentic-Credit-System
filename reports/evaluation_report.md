@@ -15,5 +15,9 @@
 - **RGR Aggregate**: 0.8913
 - **RGR Curve Files**: rgr_gaussian_curve.csv, rgr_swapping_curve.csv
 - **RGR Plot Files**: rgr_gaussian_curve.png, rgr_swapping_curve.png
+- **AURGE**: 0.9658
+- **RGE Feature Importance File**: rge_feature_importance.csv
+- **RGE Curve File**: rge_curve.csv
+- **RGE Plot Files**: rge_curve.png, rge_feature_importance.png
 - **Mitigation Applied To Group**: male mar/wid
 - **Status**: Metrics extracted for weighting, mitigation, sensitivity analysis, and explainability.

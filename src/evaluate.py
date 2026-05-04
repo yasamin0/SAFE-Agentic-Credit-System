@@ -56,6 +56,12 @@ from src.paths import (
     RGR_GAUSSIAN_PLOT_PATH,
     RGR_SWAPPING_PLOT_PATH,
     RGR_REPORT_PATH,
+
+    RGE_IMPORTANCE_CSV_PATH,
+    RGE_CURVE_CSV_PATH,
+    RGE_PLOT_PATH,
+    RGE_IMPORTANCE_PLOT_PATH,
+    RGE_REPORT_PATH,
 )
 
 # Utility helpers
@@ -65,6 +71,13 @@ from src.utils import _read_target_series, _safe_mean
 # - compute_rgr_curve creates the RGR curve and computes AURGR.
 # - save_rgr_plot saves the RGR curve as a PNG plot.
 from src.rgr import compute_rgr_curve, save_rgr_plot
+
+from src.rge import (
+    compute_rge_feature_importance,
+    compute_rge_curve,
+    save_rge_curve_plot,
+    save_rge_importance_plot,
+)
 
 def _compute_robustness_metrics(model, X_test, y_test, numeric_cols):
     """
@@ -705,6 +718,78 @@ def evaluation_and_risk_tool(description: str):
         best_non_base = best_non_base_df.iloc[0] if not best_non_base_df.empty else best_scenario
 
         # ------------------------------------------------------------
+        # RANK-BASED EXPLAINABILITY: RGE / AURGE
+        # ------------------------------------------------------------
+        # RGE measures how much the prediction ranking changes
+        # when features are removed from the input data.
+
+        rge_importance_df = compute_rge_feature_importance(
+            model=model,
+            X_test=X_test,
+        )
+
+        rge_curve_df, aurge = compute_rge_curve(
+            model=model,
+            X_test=X_test,
+            importance_df=rge_importance_df,
+        )
+
+        # Save RGE outputs for reporting and Overleaf
+        rge_importance_df.to_csv(RGE_IMPORTANCE_CSV_PATH, index=False)
+        rge_curve_df.to_csv(RGE_CURVE_CSV_PATH, index=False)
+
+        save_rge_curve_plot(
+            curve_df=rge_curve_df,
+            output_path=RGE_PLOT_PATH,
+        )
+
+        save_rge_importance_plot(
+            importance_df=rge_importance_df,
+            output_path=RGE_IMPORTANCE_PLOT_PATH,
+            top_k=15,
+        )
+
+        # Short summaries for reports
+        most_important_rge_features = rge_importance_df.sort_values(
+            "rge_importance",
+            ascending=False
+        ).head(10)
+
+        least_important_rge_features = rge_importance_df.sort_values(
+            "rge_importance",
+            ascending=True
+        ).head(10)
+
+        with open(RGE_REPORT_PATH, "w", encoding="utf-8") as f:
+            f.write("# Rank Graduation Explainability Report\n\n")
+            f.write("This report implements the paper-style RGE explainability analysis.\n\n")
+
+            f.write("## Method\n")
+            f.write("- Original predictions are computed on the clean test set.\n")
+            f.write("- Each feature is removed individually to estimate RGE importance.\n")
+            f.write("- Features are ordered from least important to most important.\n")
+            f.write("- Features are progressively removed in this order to create the RGE curve.\n")
+            f.write("- AURGE is the area under the RGE curve.\n\n")
+
+            f.write("## Results\n")
+            f.write(f"- AURGE: {aurge:.4f}\n")
+            f.write(f"- Number of processed features: {X_test.shape[1]}\n\n")
+
+            f.write("## Most Important Features by RGE\n")
+            f.write(most_important_rge_features.to_markdown(index=False))
+            f.write("\n\n")
+
+            f.write("## Least Important Features by RGE\n")
+            f.write(least_important_rge_features.to_markdown(index=False))
+            f.write("\n\n")
+
+            f.write("## Output Files\n")
+            f.write(f"- RGE feature importance CSV: {RGE_IMPORTANCE_CSV_PATH.name}\n")
+            f.write(f"- RGE curve CSV: {RGE_CURVE_CSV_PATH.name}\n")
+            f.write(f"- RGE curve plot: {RGE_PLOT_PATH.name}\n")
+            f.write(f"- RGE importance plot: {RGE_IMPORTANCE_PLOT_PATH.name}\n")
+
+        # ------------------------------------------------------------
         # EXPLAINABILITY SNAPSHOT
         # ------------------------------------------------------------
         # Extract model feature importances from XGBoost
@@ -733,6 +818,10 @@ def evaluation_and_risk_tool(description: str):
 - **RGR Aggregate**: {rgr_aggregate:.4f}
 - **RGR Curve Files**: {RGR_GAUSSIAN_CSV_PATH.name}, {RGR_SWAPPING_CSV_PATH.name}
 - **RGR Plot Files**: {RGR_GAUSSIAN_PLOT_PATH.name}, {RGR_SWAPPING_PLOT_PATH.name}
+- **AURGE**: {aurge:.4f}
+- **RGE Feature Importance File**: {RGE_IMPORTANCE_CSV_PATH.name}
+- **RGE Curve File**: {RGE_CURVE_CSV_PATH.name}
+- **RGE Plot Files**: {RGE_PLOT_PATH.name}, {RGE_IMPORTANCE_PLOT_PATH.name}
 - **Mitigation Applied To Group**: {disadvantaged_group}
 - **Status**: Metrics extracted for weighting, mitigation, sensitivity analysis, and explainability.
 """
@@ -825,8 +914,27 @@ Interpretation:
 - Main effects show which single factor most strongly changes SAFE score on average.
 - Pairwise interactions show which pairs of factors jointly influence the SAFE decision beyond their separate average effects.
 
-## Explainability Snapshot
-Top 10 most important processed features:
+## Rank-Based Explainability: RGE / AURGE
+- AURGE: {aurge:.4f}
+- RGE feature importance CSV: {RGE_IMPORTANCE_CSV_PATH.name}
+- RGE curve CSV: {RGE_CURVE_CSV_PATH.name}
+- RGE curve plot: {RGE_PLOT_PATH.name}
+- RGE importance plot: {RGE_IMPORTANCE_PLOT_PATH.name}
+
+Interpretation:
+- RGE measures how much the model prediction ranking changes when features are removed.
+- Features are first ordered from least important to most important.
+- The RGE curve is created by progressively removing features in this order.
+- A higher AURGE means the model ranking remains more stable during progressive feature removal.
+
+Top 10 most important processed features by RGE:
+{most_important_rge_features.to_markdown(index=False)}
+
+Top 10 least important processed features by RGE:
+{least_important_rge_features.to_markdown(index=False)}
+
+## Explainability Snapshot: XGBoost Feature Importance
+Top 10 most important processed features by XGBoost importance:
 {importance_df.head(10).to_markdown(index=False)}
 
 ## Auditor Notes
