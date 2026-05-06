@@ -85,7 +85,10 @@ OUTLIER_REPORT_PATH = REPORTS_DIR / "outlier_analysis_report.md"
 MODEL_COMPARISON_REPORT_PATH = REPORTS_DIR / "model_comparison_report.md"
 CV_RESULTS_PATH = REPORTS_DIR / "cv_results.csv"
 
-
+MITIGATION_REPORT_PATH = REPORTS_DIR / "mitigation_report.md"
+MITIGATION_SEARCH_CSV_PATH = REPORTS_DIR / "mitigation_threshold_search.csv"
+MITIGATION_GROUP_BEFORE_CSV_PATH = REPORTS_DIR / "mitigation_group_table_before.csv"
+MITIGATION_GROUP_AFTER_CSV_PATH = REPORTS_DIR / "mitigation_group_table_after.csv"
 # ------------------------------------------------------------
 # EDA and classification artifacts
 # ------------------------------------------------------------

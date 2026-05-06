@@ -1,21 +1,34 @@
 # System Card — SAFE Agentic Credit Scoring
 
 ## Final Governance Decision
-**Decision:** REJECTED
+**Baseline Decision:** REJECTED
 
-**Final SAFE Score:** 0.692
+**Baseline SAFE Score:** 0.692
+
+**Mitigated Decision:** REJECTED
+
+**Mitigated SAFE Score:** 0.722
 
 **Approval Threshold:** 0.750
 
+**Governance Conclusion:** The deployment decision remains **REJECTED** under the baseline governance rule. The mitigation result is reported separately as post-processing evidence.
+
 ## Decision Logic
-The model is approved only if:
+The baseline governance decision is approved only if:
 
-`SAFE Score >= Approval Threshold`
+`Baseline SAFE Score >= Approval Threshold`
 
-Current result:
+Baseline result:
 
 `0.692 >= 0.750` → **REJECTED**
 
+Mitigated result:
+
+`0.722 >= 0.750` → **REJECTED**
+
+Mitigation interpretation:
+
+Mitigation improved the SAFE Score from 0.6925 to 0.7216. The mitigated decision is REJECTED.
 ## SAFE Score Formula
 `SAFE Score = W_AUC*AUC + W_FAIR*Fairness_Aggregate + W_ROB*Robustness_Aggregate`
 
@@ -56,10 +69,16 @@ The system evaluates:
 Fairness Aggregate: 0.5363
 
 ## Mitigation Result
-- Mitigated AUC: 0.6357
-- Mitigated Fairness Aggregate: 0.5363
-- Mitigated SAFE Score: 0.6502
+- Mitigation type: group-aware threshold search
+- Selected threshold delta: 0.1500
+- Selected adjusted threshold: 0.4000
+- Baseline SAFE Score: 0.6925
+- Baseline Decision: REJECTED
+- Mitigated AUC: 0.7767
+- Mitigated Fairness Aggregate: 0.5945
+- Mitigated SAFE Score: 0.7216
 - Mitigated Decision: REJECTED
+- Mitigation summary: Mitigation improved the SAFE Score from 0.6925 to 0.7216. The mitigated decision is REJECTED.
 
 ## SAFE AI Paper Metrics
 - AURGA: 0.6903
@@ -68,7 +87,8 @@ Fairness Aggregate: 0.5363
 - SHAP-RGE Spearman Correlation: 0.9838
 
 ## Configuration
-- Prediction threshold: 0.55
+- Prediction threshold from configuration: 0.55
+- Approval threshold from configuration: 0.75
 - Sensitive feature: personal_status
 - Drop sensitive from model: False
 - Random state: 42

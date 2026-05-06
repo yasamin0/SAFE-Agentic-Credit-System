@@ -36,7 +36,7 @@ from src.config import (
 )
 
 from src.fairness import (
-    _apply_threshold_mitigation,
+    _apply_threshold_mitigation_search,
     _compute_fairness_from_predictions,
     _compute_fairness_metrics,
 )
@@ -82,6 +82,14 @@ from src.paths import (
     COMPLIANCE_SCORE_CSV_PATH,
     COMPLIANCE_SCORE_PLOT_PATH,
     SAFE_PAPER_METRICS_REPORT_PATH,
+
+    EVALUATION_REPORT_PATH,
+    FINAL_REPORT_PATH,
+    SENSITIVITY_REPORT_PATH,
+    MITIGATION_REPORT_PATH,
+    MITIGATION_SEARCH_CSV_PATH,
+    MITIGATION_GROUP_BEFORE_CSV_PATH,
+    MITIGATION_GROUP_AFTER_CSV_PATH,
 )
 
 from src.utils import _read_target_series, _safe_mean
@@ -839,27 +847,99 @@ def evaluation_and_risk_tool(description: str):
         # ------------------------------------------------------------
         # MITIGATION EXPERIMENT
         # ------------------------------------------------------------
-        # Apply threshold-based mitigation to the disadvantaged group
-        mitigated_pred, disadvantaged_group = _apply_threshold_mitigation(
-            y_probs, group, base_threshold=PRED_THRESHOLD
-        )
-
-        mitigated_fairness_metrics, mitigated_group_table = _compute_fairness_from_predictions(
-            y_test, mitigated_pred, group
-        )
-
-        mitigated_auc = float(roc_auc_score(y_test, mitigated_pred))
-
         # Baseline SAFE score from weighted auditor aggregation
         baseline_safe = ensemble_results["ensemble_score"]
 
-        # Recompute SAFE score under mitigated outputs
+        mitigation_result = _apply_threshold_mitigation_search(
+            y_true=y_test,
+            y_probs=y_probs,
+            group=group,
+            base_threshold=PRED_THRESHOLD,
+            auc_score=auc_score,
+            robustness_aggregate=robustness_metrics["robustness_aggregate"],
+            w_auc=W_AUC,
+            w_fair=W_FAIR,
+            w_rob=W_ROB,
+        )
+
+        mitigated_pred = mitigation_result["mitigated_pred"]
+        disadvantaged_group = mitigation_result["disadvantaged_group"]
+        best_mitigation_row = mitigation_result["best_row"]
+        mitigation_search_df = mitigation_result["search_df"]
+        baseline_group_table = mitigation_result["baseline_group_table"]
+        mitigated_group_table = mitigation_result["mitigated_group_table"]
+        baseline_mitigation_metrics = mitigation_result["baseline_metrics"]
+        mitigated_fairness_metrics = mitigation_result["mitigated_metrics"]
+
+        # Threshold mitigation changes binary decisions, not the model's probability ranking.
+        # So probability-based AUC remains the same as the baseline AUC.
+        mitigated_auc = auc_score
+
         mitigated_safe = (
             W_AUC * mitigated_auc
             + W_FAIR * mitigated_fairness_metrics["fairness_aggregate"]
             + W_ROB * robustness_metrics["robustness_aggregate"]
         )
 
+        mitigation_search_df.to_csv(MITIGATION_SEARCH_CSV_PATH, index=False)
+        baseline_group_table.to_csv(MITIGATION_GROUP_BEFORE_CSV_PATH, index=False)
+        mitigated_group_table.to_csv(MITIGATION_GROUP_AFTER_CSV_PATH, index=False)
+
+        with open(MITIGATION_REPORT_PATH, "w", encoding="utf-8") as f:
+            f.write("# Mitigation Experiment Report\n\n")
+            f.write("This report evaluates group-aware threshold mitigation.\n\n")
+
+            f.write("## Method\n")
+            f.write(
+                "The experiment first identifies the group with the lowest baseline "
+                "positive prediction rate. It then evaluates several threshold reductions "
+                "for that group while keeping the other group thresholds unchanged. "
+                "The selected mitigation is the candidate with the highest SAFE score.\n\n"
+            )
+
+            f.write("## Selected Mitigation\n")
+            f.write(f"- Disadvantaged group: {disadvantaged_group}\n")
+            f.write(f"- Base threshold from configuration: {PRED_THRESHOLD:.4f}\n")            
+            f.write(
+                f"- Selected adjusted threshold: "
+                f"{best_mitigation_row['adjusted_threshold_for_disadvantaged_group']:.4f}\n"
+            )
+            f.write(f"- Selected delta: {best_mitigation_row['delta']:.4f}\n")
+            f.write(f"- Baseline AUC: {auc_score:.4f}\n")
+            f.write(f"- Mitigated AUC: {mitigated_auc:.4f}\n")
+            f.write(f"- Baseline fairness aggregate: {fairness_metrics['fairness_aggregate']:.4f}\n")
+            f.write(f"- Mitigated fairness aggregate: {mitigated_fairness_metrics['fairness_aggregate']:.4f}\n")
+            f.write(f"- Baseline SAFE score: {baseline_safe:.4f}\n")
+            f.write(f"- Mitigated SAFE score: {mitigated_safe:.4f}\n\n")
+
+            f.write("## Baseline Fairness Components\n")
+            f.write(f"- SPD gap: {fairness_metrics['spd_gap']:.4f}\n")
+            f.write(f"- EOD gap: {fairness_metrics['eod_gap']:.4f}\n")
+            f.write(f"- AOD gap: {fairness_metrics['aod_gap']:.4f}\n")
+            f.write(f"- DIR ratio: {fairness_metrics['dir_ratio']:.4f}\n\n")
+
+            f.write("## Mitigated Fairness Components\n")
+            f.write(f"- SPD gap: {mitigated_fairness_metrics['spd_gap']:.4f}\n")
+            f.write(f"- EOD gap: {mitigated_fairness_metrics['eod_gap']:.4f}\n")
+            f.write(f"- AOD gap: {mitigated_fairness_metrics['aod_gap']:.4f}\n")
+            f.write(f"- DIR ratio: {mitigated_fairness_metrics['dir_ratio']:.4f}\n\n")
+
+            f.write("## Baseline Group Table\n\n")
+            f.write(baseline_group_table.to_markdown(index=False))
+            f.write("\n\n")
+
+            f.write("## Mitigated Group Table\n\n")
+            f.write(mitigated_group_table.to_markdown(index=False))
+            f.write("\n\n")
+
+            f.write("## Threshold Search Results\n\n")
+            f.write(mitigation_search_df.to_markdown(index=False))
+            f.write("\n\n")
+
+            f.write("## Output Files\n")
+            f.write(f"- Threshold search CSV: {MITIGATION_SEARCH_CSV_PATH.name}\n")
+            f.write(f"- Baseline group table CSV: {MITIGATION_GROUP_BEFORE_CSV_PATH.name}\n")
+            f.write(f"- Mitigated group table CSV: {MITIGATION_GROUP_AFTER_CSV_PATH.name}\n")
         # ------------------------------------------------------------
         # SENSITIVITY + INTERACTION ANALYSIS
         # ------------------------------------------------------------
@@ -968,9 +1048,17 @@ def evaluation_and_risk_tool(description: str):
 - **Baseline SAFE Score**: {baseline_safe:.4f}
 - **Ensemble Auditing Enabled**: True
 - **Auditors Used**: performance_auditor, fairness_auditor, robustness_auditor
+- **Mitigation Report File**: {MITIGATION_REPORT_PATH.name}
+- **Mitigation Threshold Search File**: {MITIGATION_SEARCH_CSV_PATH.name}
+- **Mitigation Baseline Group Table File**: {MITIGATION_GROUP_BEFORE_CSV_PATH.name}
+- **Mitigation After Group Table File**: {MITIGATION_GROUP_AFTER_CSV_PATH.name}
+- **Selected Mitigation Delta**: {best_mitigation_row['delta']:.4f}
+- **Base Prediction Threshold**: {PRED_THRESHOLD:.4f}
+- **Selected Adjusted Threshold**: {best_mitigation_row['adjusted_threshold_for_disadvantaged_group']:.4f}
 - **Mitigated AUC**: {mitigated_auc:.4f}
 - **Mitigated Fairness Aggregate**: {mitigated_fairness_metrics['fairness_aggregate']:.4f}
 - **Mitigated SAFE Score**: {mitigated_safe:.4f}
+- **Mitigated Fairness Components**: SPD={mitigated_fairness_metrics['fairness_score_spd']:.4f}, EOD={mitigated_fairness_metrics['fairness_score_eod']:.4f}, AOD={mitigated_fairness_metrics['fairness_score_aod']:.4f}, DIR={mitigated_fairness_metrics['fairness_score_dir']:.4f}
 - **Fairness Components**: SPD={fairness_metrics['fairness_score_spd']:.4f}, EOD={fairness_metrics['fairness_score_eod']:.4f}, AOD={fairness_metrics['fairness_score_aod']:.4f}, DIR={fairness_metrics['fairness_score_dir']:.4f}
 - **Robustness Components**: Noise={robustness_metrics['noise_auc_ratio']:.4f}, Dropout={robustness_metrics['dropout_auc_ratio']:.4f}, Missingness={robustness_metrics['missingness_auc_ratio']:.4f}
 - **AURGR Gaussian Noise**: {aurgr_gaussian:.4f}
@@ -1060,13 +1148,28 @@ Individual auditor scores:
 - Ensemble rule: weighted aggregation of independent performance, fairness, and robustness auditors.
 
 ## Mitigation Experiment
-- Mitigation type: group-aware threshold adjustment
+- Mitigation type: group-aware threshold search
 - Disadvantaged group detected: {disadvantaged_group}
+- Base threshold: {PRED_THRESHOLD:.4f}
+- Selected threshold delta: {best_mitigation_row['delta']:.4f}
+- Selected adjusted threshold: {best_mitigation_row['adjusted_threshold_for_disadvantaged_group']:.4f}
 - Baseline fairness aggregate: {fairness_metrics['fairness_aggregate']:.4f}
 - Mitigated fairness aggregate: {mitigated_fairness_metrics['fairness_aggregate']:.4f}
-- Baseline SAFE score: {(W_AUC * auc_score) + (W_FAIR * fairness_metrics['fairness_aggregate']) + (W_ROB * robustness_metrics['robustness_aggregate']):.4f}
+- Baseline SAFE score: {baseline_safe:.4f}
 - Mitigated SAFE score: {mitigated_safe:.4f}
+- Mitigation report: {MITIGATION_REPORT_PATH.name}
+- Mitigation threshold search CSV: {MITIGATION_SEARCH_CSV_PATH.name}
+- Baseline group table CSV: {MITIGATION_GROUP_BEFORE_CSV_PATH.name}
+- Mitigated group table CSV: {MITIGATION_GROUP_AFTER_CSV_PATH.name}
 
+### Baseline Group Table
+{baseline_group_table.to_markdown(index=False)}
+
+### Mitigated Group Table
+{mitigated_group_table.to_markdown(index=False)}
+
+### Top Mitigation Candidates
+{mitigation_search_df.head(8).to_markdown(index=False)}
 ### Group Table
 {group_table.to_markdown(index=False)}
 

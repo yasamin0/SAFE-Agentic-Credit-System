@@ -77,13 +77,46 @@ Individual auditor scores:
 - Ensemble rule: weighted aggregation of independent performance, fairness, and robustness auditors.
 
 ## Mitigation Experiment
-- Mitigation type: group-aware threshold adjustment
+- Mitigation type: group-aware threshold search
 - Disadvantaged group detected: male mar/wid
+- Base threshold: 0.5500
+- Selected threshold delta: 0.1500
+- Selected adjusted threshold: 0.4000
 - Baseline fairness aggregate: 0.5363
-- Mitigated fairness aggregate: 0.5363
+- Mitigated fairness aggregate: 0.5945
 - Baseline SAFE score: 0.6924
-- Mitigated SAFE score: 0.6502
+- Mitigated SAFE score: 0.7216
+- Mitigation report: mitigation_report.md
+- Mitigation threshold search CSV: mitigation_threshold_search.csv
+- Baseline group table CSV: mitigation_group_table_before.csv
+- Mitigated group table CSV: mitigation_group_table_after.csv
 
+### Baseline Group Table
+| group              |   n |   positive_rate |      tpr |       fpr |
+|:-------------------|----:|----------------:|---------:|----------:|
+| female div/dep/mar |  61 |       0.163934  | 0.35     | 0.0731707 |
+| male div/sep       |   9 |       0.444444  | 0.666667 | 0.333333  |
+| male mar/wid       |  12 |       0.0833333 | 0.333333 | 0         |
+| male single        | 118 |       0.144068  | 0.323529 | 0.0714286 |
+
+### Mitigated Group Table
+| group              |   n |   positive_rate |      tpr |       fpr |
+|:-------------------|----:|----------------:|---------:|----------:|
+| female div/dep/mar |  61 |        0.163934 | 0.35     | 0.0731707 |
+| male div/sep       |   9 |        0.444444 | 0.666667 | 0.333333  |
+| male mar/wid       |  12 |        0.25     | 0.333333 | 0.222222  |
+| male single        | 118 |        0.144068 | 0.323529 | 0.0714286 |
+
+### Top Mitigation Candidates
+|   delta |   base_threshold |   adjusted_threshold_for_disadvantaged_group | disadvantaged_group   |   auc_probability_based |   fairness_aggregate |   spd_gap |   eod_gap |   aod_gap |   dir_ratio |   positive_rate_gap |   safe_score |
+|--------:|-----------------:|---------------------------------------------:|:----------------------|------------------------:|---------------------:|----------:|----------:|----------:|------------:|--------------------:|-------------:|
+|    0.15 |             0.55 |                                         0.4  | male mar/wid          |                0.776667 |             0.594529 |  0.300377 |  0.343137 |  0.302521 |    0.324153 |            0.300377 |     0.721579 |
+|    0.2  |             0.55 |                                         0.35 | male mar/wid          |                0.776667 |             0.580641 |  0.300377 |  0.343137 |  0.358077 |    0.324153 |            0.300377 |     0.714634 |
+|    0    |             0.55 |                                         0.55 | male mar/wid          |                0.776667 |             0.536254 |  0.361111 |  0.343137 |  0.338235 |    0.1875   |            0.361111 |     0.692441 |
+|    0.02 |             0.55 |                                         0.53 | male mar/wid          |                0.776667 |             0.536254 |  0.361111 |  0.343137 |  0.338235 |    0.1875   |            0.361111 |     0.692441 |
+|    0.05 |             0.55 |                                         0.5  | male mar/wid          |                0.776667 |             0.536254 |  0.361111 |  0.343137 |  0.338235 |    0.1875   |            0.361111 |     0.692441 |
+|    0.08 |             0.55 |                                         0.47 | male mar/wid          |                0.776667 |             0.536254 |  0.361111 |  0.343137 |  0.338235 |    0.1875   |            0.361111 |     0.692441 |
+|    0.1  |             0.55 |                                         0.45 | male mar/wid          |                0.776667 |             0.536254 |  0.361111 |  0.343137 |  0.338235 |    0.1875   |            0.361111 |     0.692441 |
 ### Group Table
 | group              |   n |   positive_rate |      tpr |       fpr |
 |:-------------------|----:|----------------:|---------:|----------:|

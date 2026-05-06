@@ -113,6 +113,9 @@ def build_chatbot_context():
         "shap_rge_comparison.csv": _read_csv_as_markdown("reports/shap_rge_comparison.csv", max_rows=25),
         "model_metrics_comparison.csv": _read_csv_as_markdown("reports/model_metrics_comparison.csv"),
         "compliance_score_comparison.csv": _read_csv_as_markdown("reports/compliance_score_comparison.csv"),
+        "mitigation_threshold_search.csv": _read_csv_as_markdown("reports/mitigation_threshold_search.csv"),
+        "mitigation_group_table_before.csv": _read_csv_as_markdown("reports/mitigation_group_table_before.csv"),
+        "mitigation_group_table_after.csv": _read_csv_as_markdown("reports/mitigation_group_table_after.csv"),
     }
 
     markdown_artifacts = {
@@ -128,6 +131,7 @@ def build_chatbot_context():
         "shap_rge_report.md": _safe_read_text("reports/shap_rge_report.md"),
         "safe_paper_metrics_report.md": _safe_read_text("reports/safe_paper_metrics_report.md"),
         "outlier_analysis_report.md": _safe_read_text("reports/outlier_analysis_report.md"),
+        "mitigation_report.md": _safe_read_text("reports/mitigation_report.md"),
     }
 
     return {

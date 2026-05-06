@@ -15,9 +15,17 @@
 - **Baseline SAFE Score**: 0.6924
 - **Ensemble Auditing Enabled**: True
 - **Auditors Used**: performance_auditor, fairness_auditor, robustness_auditor
-- **Mitigated AUC**: 0.6357
-- **Mitigated Fairness Aggregate**: 0.5363
-- **Mitigated SAFE Score**: 0.6502
+- **Mitigation Report File**: mitigation_report.md
+- **Mitigation Threshold Search File**: mitigation_threshold_search.csv
+- **Mitigation Baseline Group Table File**: mitigation_group_table_before.csv
+- **Mitigation After Group Table File**: mitigation_group_table_after.csv
+- **Selected Mitigation Delta**: 0.1500
+- **Base Prediction Threshold**: 0.5500
+- **Selected Adjusted Threshold**: 0.4000
+- **Mitigated AUC**: 0.7767
+- **Mitigated Fairness Aggregate**: 0.5945
+- **Mitigated SAFE Score**: 0.7216
+- **Mitigated Fairness Components**: SPD=0.6996, EOD=0.6569, AOD=0.6975, DIR=0.3242
 - **Fairness Components**: SPD=0.6389, EOD=0.6569, AOD=0.6618, DIR=0.1875
 - **Robustness Components**: Noise=1.0000, Dropout=0.8708, Missingness=0.9989
 - **AURGR Gaussian Noise**: 0.9814
