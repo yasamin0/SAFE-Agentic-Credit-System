@@ -100,25 +100,24 @@ CONFUSION_MATRIX_PLOT_PATH = FIGURES_DIR / "confusion_matrix.png"
 CALIBRATION_CURVE_CSV_PATH = REPORTS_DIR / "calibration_curve.csv"
 CALIBRATION_CURVE_PLOT_PATH = FIGURES_DIR / "calibration_curve.png"
 
-
 # ------------------------------------------------------------
 # RGA / RGR / RGE artifacts
 # ------------------------------------------------------------
 
 RGA_CURVE_CSV_PATH = REPORTS_DIR / "rga_curve.csv"
-RGA_PLOT_PATH = REPORTS_DIR / "rga_curve.png"
+RGA_PLOT_PATH = FIGURES_DIR / "rga_curve.png"
 RGA_REPORT_PATH = REPORTS_DIR / "rga_report.md"
 
 RGR_GAUSSIAN_CSV_PATH = REPORTS_DIR / "rgr_gaussian_curve.csv"
 RGR_SWAPPING_CSV_PATH = REPORTS_DIR / "rgr_swapping_curve.csv"
-RGR_GAUSSIAN_PLOT_PATH = REPORTS_DIR / "rgr_gaussian_curve.png"
-RGR_SWAPPING_PLOT_PATH = REPORTS_DIR / "rgr_swapping_curve.png"
+RGR_GAUSSIAN_PLOT_PATH = FIGURES_DIR / "rgr_gaussian_curve.png"
+RGR_SWAPPING_PLOT_PATH = FIGURES_DIR / "rgr_swapping_curve.png"
 RGR_REPORT_PATH = REPORTS_DIR / "rgr_report.md"
 
 RGE_IMPORTANCE_CSV_PATH = REPORTS_DIR / "rge_feature_importance.csv"
 RGE_CURVE_CSV_PATH = REPORTS_DIR / "rge_curve.csv"
-RGE_PLOT_PATH = REPORTS_DIR / "rge_curve.png"
-RGE_IMPORTANCE_PLOT_PATH = REPORTS_DIR / "rge_feature_importance.png"
+RGE_PLOT_PATH = FIGURES_DIR / "rge_curve.png"
+RGE_IMPORTANCE_PLOT_PATH = FIGURES_DIR / "rge_feature_importance.png"
 RGE_REPORT_PATH = REPORTS_DIR / "rge_report.md"
 
 
@@ -131,9 +130,8 @@ SHAP_RGE_REPORT_PATH = REPORTS_DIR / "shap_rge_report.md"
 
 MODEL_METRICS_COMPARISON_CSV_PATH = REPORTS_DIR / "model_metrics_comparison.csv"
 COMPLIANCE_SCORE_CSV_PATH = REPORTS_DIR / "compliance_score_comparison.csv"
-COMPLIANCE_SCORE_PLOT_PATH = REPORTS_DIR / "compliance_score_comparison.png"
+COMPLIANCE_SCORE_PLOT_PATH = FIGURES_DIR / "compliance_score_comparison.png"
 SAFE_PAPER_METRICS_REPORT_PATH = REPORTS_DIR / "safe_paper_metrics_report.md"
-
 
 def ensure_directories():
     """Create all folders needed by the pipeline."""

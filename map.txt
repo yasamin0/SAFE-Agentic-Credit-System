@@ -1,0 +1,103 @@
+SAFE-Agentic-Credit-System/
+│
+├── .git/
+│
+├── data/
+│   ├── raw/
+│   │   └── raw_credit_data.csv
+│   │
+│   ├── processed/
+│   │   ├── clean_train_features.csv
+│   │   ├── clean_train_target.csv
+│   │   ├── clean_test_features.csv
+│   │   ├── clean_test_target.csv
+│   │   ├── clean_train.csv
+│   │   └── clean_test.csv
+│   │
+│   └── sensitive/
+│       ├── sensitive_train.csv
+│       └── sensitive_test.csv
+│
+├── Dataset/
+│
+├── docs/
+│   ├── datacard.json
+│   ├── model_card.md
+│   └── system_card.md
+│
+├── models/
+│   ├── best_model.pkl
+│   ├── model_logistic_regression.pkl
+│   ├── model_random_baseline.pkl
+│   ├── model_random_forest.pkl
+│   ├── model_stacking_ensemble.pkl
+│   ├── model_voting_ensemble.pkl
+│   └── model_xgboost.pkl
+│
+├── reports/
+│   ├── figures/
+│   │   ├── calibration_curve.png
+│   │   ├── confusion_matrix.png
+│   │   ├── eda_missing_values.png
+│   │   ├── eda_numeric_distributions.png
+│   │   └── eda_target_distribution.png
+│   │
+│   ├── calibration_curve.csv
+│   ├── chatbot_log.md
+│   ├── chatbot_sample_qa.md
+│   ├── classification_metrics.csv
+│   ├── compliance_score_comparison.csv
+│   ├── compliance_score_comparison.png
+│   ├── confusion_matrix.csv
+│   ├── cv_results.csv
+│   ├── evaluation_report.md
+│   ├── final_report.md
+│   ├── model_comparison_report.md
+│   ├── model_metrics_comparison.csv
+│   ├── outlier_analysis_report.md
+│   ├── rga_curve.csv
+│   ├── rga_curve.png
+│   ├── rga_report.md
+│   ├── rge_curve.csv
+│   ├── rge_curve.png
+│   ├── rge_feature_importance.csv
+│   ├── rge_feature_importance.png
+│   ├── rge_report.md
+│   ├── rgr_gaussian_curve.csv
+│   ├── rgr_gaussian_curve.png
+│   ├── rgr_report.md
+│   ├── rgr_swapping_curve.csv
+│   ├── rgr_swapping_curve.png
+│   ├── safe_paper_metrics_report.md
+│   ├── sensitivity_report.md
+│   ├── shap_rge_comparison.csv
+│   └── shap_rge_report.md
+│
+├── src/
+│   ├── __pycache__/
+│   ├── __init__.py
+│   ├── chat_cli.py
+│   ├── chatbot.py
+│   ├── compliance.py
+│   ├── config.py
+│   ├── data_loader.py
+│   ├── evaluate.py
+│   ├── fairness.py
+│   ├── model.py
+│   ├── paths.py
+│   ├── preprocessing.py
+│   ├── reporting.py
+│   ├── rga.py
+│   ├── rge.py
+│   ├── rgr.py
+│   ├── shap_compare.py
+│   ├── train.py
+│   └── utils.py
+│
+├── venv/
+│
+├── .env
+├── .gitattributes
+├── .gitignore
+├── main.py
+└── README.md
