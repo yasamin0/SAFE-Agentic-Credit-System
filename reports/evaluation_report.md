@@ -1,44 +1,50 @@
 ### Detailed SAFE AI Evaluation Report
-- **Accuracy (AUC)**: 0.7767
-- **PR-AUC**: 0.5615
-- **Precision**: 0.6562
-- **Recall**: 0.3500
-- **F1 Score**: 0.4565
-- **Brier Score**: 0.1689
+- **Accuracy (AUC)**: 0.8086
+- **PR-AUC**: 0.6560
+- **Precision**: 0.6842
+- **Recall**: 0.4333
+- **F1 Score**: 0.5306
+- **Brier Score**: 0.1547
 - **Classification Metrics File**: classification_metrics.csv
 - **Confusion Matrix File**: confusion_matrix.csv
 - **Calibration Curve File**: calibration_curve.csv
 - **Confusion Matrix Plot**: confusion_matrix.png
 - **Calibration Curve Plot**: calibration_curve.png
-- **Fairness Aggregate**: 0.5363
-- **Robustness Aggregate**: 0.9566
-- **Baseline SAFE Score**: 0.6924
+- **Fairness Aggregate**: 0.5399
+- **Robustness Aggregate**: 0.9655
+- **Baseline SAFE Score**: 0.7056
+- **Selected Operational Model**: Stacking Ensemble
+- **SAFE Model Selection File**: safe_model_selection_comparison.csv
+- **SAFE Model Selection Plot**: safe_model_selection_comparison.png
+- **SAFE Model Selection Report**: safe_model_selection_report.md
 - **Ensemble Auditing Enabled**: True
 - **Auditors Used**: performance_auditor, fairness_auditor, robustness_auditor
 - **Mitigation Report File**: mitigation_report.md
 - **Mitigation Threshold Search File**: mitigation_threshold_search.csv
 - **Mitigation Baseline Group Table File**: mitigation_group_table_before.csv
 - **Mitigation After Group Table File**: mitigation_group_table_after.csv
-- **Selected Mitigation Delta**: 0.1500
+- **Selected Mitigation Delta**: 0.2000
 - **Base Prediction Threshold**: 0.5500
-- **Selected Adjusted Threshold**: 0.4000
-- **Mitigated AUC**: 0.7767
-- **Mitigated Fairness Aggregate**: 0.5945
-- **Mitigated SAFE Score**: 0.7216
-- **Mitigated Fairness Components**: SPD=0.6996, EOD=0.6569, AOD=0.6975, DIR=0.3242
-- **Fairness Components**: SPD=0.6389, EOD=0.6569, AOD=0.6618, DIR=0.1875
-- **Robustness Components**: Noise=1.0000, Dropout=0.8708, Missingness=0.9989
-- **AURGR Gaussian Noise**: 0.9814
-- **AURGR Percentile Swapping**: 0.8475
-- **RGR Aggregate**: 0.9145
+- **Selected Adjusted Threshold**: 0.3500
+- **Mitigated AUC**: 0.8086
+- **Mitigated Fairness Aggregate**: 0.6304
+- **Mitigated SAFE Score**: 0.7509
+- **Mitigated Fairness Components**: SPD=0.7166, EOD=0.7157, AOD=0.7269, DIR=0.3623
+- **Fairness Components**: SPD=0.6389, EOD=0.6667, AOD=0.6667, DIR=0.1875
+- **Robustness Components**: Noise=0.9962, Dropout=0.9024, Missingness=0.9981
+- **AURGR Gaussian Noise**: 0.9943
+- **AURGR Percentile Swapping**: 0.8691
+- **RGR Aggregate**: 0.9317
 - **RGR Curve Files**: rgr_gaussian_curve.csv, rgr_swapping_curve.csv
 - **RGR Plot Files**: rgr_gaussian_curve.png, rgr_swapping_curve.png
-- **AURGE**: 0.9816
+- **AURGE**: 0.9725
 - **RGE Feature Importance File**: rge_feature_importance.csv
 - **RGE Curve File**: rge_curve.csv
 - **RGE Plot Files**: rge_curve.png, rge_feature_importance.png
-- **AURGA**: 0.6903
-- **SHAP-RGE Spearman Correlation**: 0.983841540319698
+- **AURGA**: 0.7018
+- **SHAP-RGE Spearman Correlation**: 0.8902696985721839
+- **Top Models SHAP-RGE Comparison File**: top_models_shap_rge_comparison.csv
+- **Top Models SHAP-RGE Report**: top_models_shap_rge_report.md
 - **Model Metrics Comparison File**: model_metrics_comparison.csv
 - **Compliance Score File**: compliance_score_comparison.csv
 - **Compliance Score Plot**: compliance_score_comparison.png

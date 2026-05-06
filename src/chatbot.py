@@ -116,6 +116,7 @@ def build_chatbot_context():
         "mitigation_threshold_search.csv": _read_csv_as_markdown("reports/mitigation_threshold_search.csv"),
         "mitigation_group_table_before.csv": _read_csv_as_markdown("reports/mitigation_group_table_before.csv"),
         "mitigation_group_table_after.csv": _read_csv_as_markdown("reports/mitigation_group_table_after.csv"),
+        "top_models_shap_rge_comparison.csv": _read_csv_as_markdown("reports/top_models_shap_rge_comparison.csv", max_rows=40),
     }
 
     markdown_artifacts = {
@@ -132,6 +133,7 @@ def build_chatbot_context():
         "safe_paper_metrics_report.md": _safe_read_text("reports/safe_paper_metrics_report.md"),
         "outlier_analysis_report.md": _safe_read_text("reports/outlier_analysis_report.md"),
         "mitigation_report.md": _safe_read_text("reports/mitigation_report.md"),
+        "top_models_shap_rge_report.md": _safe_read_text("reports/top_models_shap_rge_report.md"),
     }
 
     return {

@@ -3,9 +3,9 @@
 RGR measures ranking stability under increasing perturbation intensity.
 
 ## Results
-- AURGR Gaussian Noise: 0.9814
-- AURGR Percentile Swapping: 0.8475
-- RGR Aggregate: 0.9145
+- AURGR Gaussian Noise: 0.9943
+- AURGR Percentile Swapping: 0.8691
+- RGR Aggregate: 0.9317
 
 ## Output Files
 - Gaussian curve CSV: rgr_gaussian_curve.csv

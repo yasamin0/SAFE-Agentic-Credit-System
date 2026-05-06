@@ -3,11 +3,11 @@
 ## Final Governance Decision
 **Baseline Decision:** REJECTED
 
-**Baseline SAFE Score:** 0.692
+**Baseline SAFE Score:** 0.706
 
-**Mitigated Decision:** REJECTED
+**Mitigated Decision:** APPROVED
 
-**Mitigated SAFE Score:** 0.722
+**Mitigated SAFE Score:** 0.751
 
 **Approval Threshold:** 0.750
 
@@ -20,15 +20,15 @@ The baseline governance decision is approved only if:
 
 Baseline result:
 
-`0.692 >= 0.750` → **REJECTED**
+`0.706 >= 0.750` → **REJECTED**
 
 Mitigated result:
 
-`0.722 >= 0.750` → **REJECTED**
+`0.751 >= 0.750` → **APPROVED**
 
 Mitigation interpretation:
 
-Mitigation improved the SAFE Score from 0.6925 to 0.7216. The mitigated decision is REJECTED.
+Mitigation improved the SAFE Score from 0.7056 to 0.7509. The mitigated decision is APPROVED.
 ## SAFE Score Formula
 `SAFE Score = W_AUC*AUC + W_FAIR*Fairness_Aggregate + W_ROB*Robustness_Aggregate`
 
@@ -38,10 +38,10 @@ Current weights:
 - W_ROB = 0.200
 
 Current computation:
-- AUC = 0.7767
-- Fairness Aggregate = 0.5363
-- Robustness Aggregate = 0.9566
-- Final SAFE Score = 0.6925
+- AUC = 0.8086
+- Fairness Aggregate = 0.5399
+- Robustness Aggregate = 0.9655
+- Final SAFE Score = 0.7056
 
 ## Main Reason for Decision
 The weakest core dimension is **Fairness Aggregate**.
@@ -49,11 +49,11 @@ The weakest core dimension is **Fairness Aggregate**.
 In this run, the model is rejected because the weighted SAFE score is below the approval threshold.
 
 ## Additional Performance Metrics
-- PR-AUC: 0.5615
-- Precision: 0.6562
-- Recall: 0.3500
-- F1 Score: 0.4565
-- Brier Score: 0.1689
+- PR-AUC: 0.6560
+- Precision: 0.6842
+- Recall: 0.4333
+- F1 Score: 0.5306
+- Brier Score: 0.1547
 
 ## Fairness Extension
 Fairness is kept as an extension for credit lending.
@@ -66,25 +66,25 @@ The system evaluates:
 - Fairness Aggregate
 - Group-aware mitigation result
 
-Fairness Aggregate: 0.5363
+Fairness Aggregate: 0.5399
 
 ## Mitigation Result
 - Mitigation type: group-aware threshold search
-- Selected threshold delta: 0.1500
-- Selected adjusted threshold: 0.4000
-- Baseline SAFE Score: 0.6925
+- Selected threshold delta: 0.2000
+- Selected adjusted threshold: 0.3500
+- Baseline SAFE Score: 0.7056
 - Baseline Decision: REJECTED
-- Mitigated AUC: 0.7767
-- Mitigated Fairness Aggregate: 0.5945
-- Mitigated SAFE Score: 0.7216
-- Mitigated Decision: REJECTED
-- Mitigation summary: Mitigation improved the SAFE Score from 0.6925 to 0.7216. The mitigated decision is REJECTED.
+- Mitigated AUC: 0.8086
+- Mitigated Fairness Aggregate: 0.6304
+- Mitigated SAFE Score: 0.7509
+- Mitigated Decision: APPROVED
+- Mitigation summary: Mitigation improved the SAFE Score from 0.7056 to 0.7509. The mitigated decision is APPROVED.
 
 ## SAFE AI Paper Metrics
-- AURGA: 0.6903
-- RGR Aggregate: 0.9145
-- AURGE: 0.9816
-- SHAP-RGE Spearman Correlation: 0.9838
+- AURGA: 0.7018
+- RGR Aggregate: 0.9317
+- AURGE: 0.9725
+- SHAP-RGE Spearman Correlation: 0.8903
 
 ## Configuration
 - Prediction threshold from configuration: 0.55
@@ -102,16 +102,16 @@ Evaluates how SAFE decisions change under variations in weights, thresholds, sen
 
 | scenario                          |   prediction_threshold |   approval_threshold |   w_auc |   w_fair |   w_rob | sensitive_feature   |      auc |   fairness_aggregate |   robustness_aggregate |   safe_score | decision   |   delta_vs_base |
 |:----------------------------------|-----------------------:|---------------------:|--------:|---------:|--------:|:--------------------|---------:|---------------------:|-----------------------:|-------------:|:-----------|----------------:|
-| sensitive_feature=foreign_worker  |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | foreign_worker      | 0.776667 |             0.729906 |               0.956571 |     0.789267 | APPROVED   |      0.0968259  |
-| weights=(0.30,0.30,0.40)          |                   0.55 |                 0.75 |     0.3 |      0.3 |     0.4 | personal_status     | 0.776667 |             0.536254 |               0.956571 |     0.776504 | APPROVED   |      0.0840633  |
-| weights=(0.50,0.30,0.20)          |                   0.55 |                 0.75 |     0.5 |      0.3 |     0.2 | personal_status     | 0.776667 |             0.536254 |               0.956571 |     0.740524 | REJECTED   |      0.0480825  |
-| prediction_threshold=0.6          |                   0.6  |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.776667 |             0.548611 |               0.956571 |     0.69862  | REJECTED   |      0.00617851 |
-| approval_threshold=0.7            |                   0.55 |                 0.7  |     0.3 |      0.5 |     0.2 | personal_status     | 0.776667 |             0.536254 |               0.956571 |     0.692441 | REJECTED   |      0          |
-| approval_threshold=0.75           |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.776667 |             0.536254 |               0.956571 |     0.692441 | REJECTED   |      0          |
-| approval_threshold=0.8            |                   0.55 |                 0.8  |     0.3 |      0.5 |     0.2 | personal_status     | 0.776667 |             0.536254 |               0.956571 |     0.692441 | REJECTED   |      0          |
-| base                              |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.776667 |             0.536254 |               0.956571 |     0.692441 | REJECTED   |      0          |
-| prediction_threshold=0.55         |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.776667 |             0.536254 |               0.956571 |     0.692441 | REJECTED   |      0          |
-| sensitive_feature=personal_status |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.776667 |             0.536254 |               0.956571 |     0.692441 | REJECTED   |      0          |
+| sensitive_feature=foreign_worker  |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | foreign_worker      | 0.808571 |             0.735242 |               0.965548 |     0.803302 | APPROVED   |       0.0976557 |
+| weights=(0.30,0.30,0.40)          |                   0.55 |                 0.75 |     0.3 |      0.3 |     0.4 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.79077  | APPROVED   |       0.0851234 |
+| weights=(0.50,0.30,0.20)          |                   0.55 |                 0.75 |     0.5 |      0.3 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.759374 | APPROVED   |       0.0537282 |
+| prediction_threshold=0.6          |                   0.6  |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.604167 |               0.965548 |     0.737764 | REJECTED   |       0.0321181 |
+| approval_threshold=0.7            |                   0.55 |                 0.7  |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | APPROVED   |       0         |
+| approval_threshold=0.75           |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
+| approval_threshold=0.8            |                   0.55 |                 0.8  |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
+| base                              |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
+| prediction_threshold=0.55         |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
+| sensitive_feature=personal_status |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
 
 ## Governance Note
 This card separates two concepts:

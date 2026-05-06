@@ -3,36 +3,36 @@
 RGE measures ranking change when features are removed.
 
 ## Results
-- AURGE: 0.9816
+- AURGE: 0.9725
 - Number of processed features: 61
 
 ## Most Important Features by RGE
 | feature                                       |   rge_similarity_after_removal |   rge_importance |   importance_rank_least_to_most |
 |:----------------------------------------------|-------------------------------:|-----------------:|--------------------------------:|
-| checking_status_no checking                   |                       0.916172 |       0.0838279  |                              61 |
-| duration                                      |                       0.955246 |       0.0447539  |                              60 |
-| credit_amount                                 |                       0.984288 |       0.015712   |                              59 |
-| credit_history_critical/other existing credit |                       0.988169 |       0.0118309  |                              58 |
-| savings_status_less_than_100                  |                       0.990193 |       0.00980749 |                              57 |
-| other_payment_plans_bank                      |                       0.992247 |       0.00775343 |                              56 |
-| checking_status_less_than_0                   |                       0.99304  |       0.00695987 |                              55 |
-| installment_commitment                        |                       0.995195 |       0.00480458 |                              54 |
-| other_payment_plans_none                      |                       0.99552  |       0.00448047 |                              53 |
-| property_magnitude_real estate                |                       0.995735 |       0.00426532 |                              52 |
+| checking_status_no checking                   |                       0.969578 |       0.0304221  |                              61 |
+| duration                                      |                       0.980553 |       0.0194471  |                              60 |
+| credit_amount                                 |                       0.984587 |       0.0154131  |                              59 |
+| checking_status_less_than_0                   |                       0.988527 |       0.0114735  |                              58 |
+| credit_history_critical/other existing credit |                       0.988596 |       0.0114042  |                              57 |
+| savings_status_less_than_100                  |                       0.990007 |       0.00999274 |                              56 |
+| installment_commitment                        |                       0.992984 |       0.00701605 |                              55 |
+| personal_status_male single                   |                       0.996099 |       0.00390099 |                              54 |
+| other_payment_plans_none                      |                       0.996165 |       0.00383549 |                              53 |
+| purpose_used car                              |                       0.996318 |       0.00368229 |                              52 |
 
 ## Least Important Features by RGE
-| feature                                    |   rge_similarity_after_removal |   rge_importance |   importance_rank_least_to_most |
-|:-------------------------------------------|-------------------------------:|-----------------:|--------------------------------:|
-| checking_status_0less_than_=Xless_than_200 |                              1 |                0 |                               1 |
-| purpose_domestic appliance                 |                              1 |                0 |                              21 |
-| purpose_business                           |                              1 |                0 |                              20 |
-| credit_history_existing paid               |                              1 |                0 |                              19 |
-| checking_status_>=200                      |                              1 |                0 |                              18 |
-| purpose_furniture/equipment                |                              1 |                0 |                              17 |
-| num_dependents                             |                              1 |                0 |                              16 |
-| purpose_other                              |                              1 |                0 |                              14 |
-| purpose_repairs                            |                              1 |                0 |                              13 |
-| purpose_retraining                         |                              1 |                0 |                              12 |
+| feature                                      |   rge_similarity_after_removal |   rge_importance |   importance_rank_least_to_most |
+|:---------------------------------------------|-------------------------------:|-----------------:|--------------------------------:|
+| purpose_domestic appliance                   |                       0.999999 |      1.40386e-06 |                               1 |
+| savings_status_500less_than_=Xless_than_1000 |                       0.999992 |      8.20037e-06 |                               2 |
+| personal_status_male mar/wid                 |                       0.999986 |      1.35141e-05 |                               3 |
+| purpose_retraining                           |                       0.999971 |      2.87634e-05 |                               4 |
+| other_payment_plans_stores                   |                       0.99996  |      3.98786e-05 |                               5 |
+| purpose_business                             |                       0.999928 |      7.19638e-05 |                               6 |
+| job_unemp/unskilled non res                  |                       0.999919 |      8.11e-05    |                               7 |
+| job_unskilled resident                       |                       0.999884 |      0.00011565  |                               8 |
+| checking_status_>=200                        |                       0.999884 |      0.000116174 |                               9 |
+| other_parties_co applicant                   |                       0.999867 |      0.000132569 |                              10 |
 
 ## Output Files
 - RGE feature importance CSV: rge_feature_importance.csv

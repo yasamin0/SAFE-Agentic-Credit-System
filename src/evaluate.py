@@ -25,6 +25,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 
 from src.config import (
+    APPROVAL_THRESHOLD,
     RANDOM_STATE,
     ROBUST_NOISE_STD,
     ROBUST_DROPOUT_RATE,
@@ -76,6 +77,8 @@ from src.paths import (
 
     SHAP_RGE_COMPARISON_CSV_PATH,
     SHAP_RGE_REPORT_PATH,
+    TOP_MODELS_SHAP_RGE_COMPARISON_CSV_PATH,
+    TOP_MODELS_SHAP_RGE_REPORT_PATH,
 
     ALL_MODEL_PATHS,
     MODEL_METRICS_COMPARISON_CSV_PATH,
@@ -90,6 +93,12 @@ from src.paths import (
     MITIGATION_SEARCH_CSV_PATH,
     MITIGATION_GROUP_BEFORE_CSV_PATH,
     MITIGATION_GROUP_AFTER_CSV_PATH,
+
+    MODEL_SELECTION_SUMMARY_CSV_PATH,
+    SAFE_MODEL_SELECTION_CSV_PATH,
+    SAFE_MODEL_SELECTION_PLOT_PATH,
+    SAFE_MODEL_SELECTION_REPORT_PATH,
+
 )
 
 from src.utils import _read_target_series, _safe_mean
@@ -102,7 +111,12 @@ from src.rge import (
     save_rge_curve_plot,
     save_rge_importance_plot,
 )
-from src.shap_compare import compare_rge_with_shap
+from src.shap_compare import (
+    compute_general_shap_importance,
+    merge_rge_and_shap,
+    compute_rge_shap_spearman,
+    write_top_models_shap_rge_report,
+)
 from src.compliance import (
     run_model_metric_comparison,
     compute_compliance_scores,
@@ -759,6 +773,227 @@ def _run_compliance_analysis(model_metrics_df):
 
     return compliance_df
 
+def _select_top_models_by_cv(top_k=4):
+    """
+    Select top-k candidate models using the training-stage CV AUC summary.
+    """
+    summary_df = pd.read_csv(MODEL_SELECTION_SUMMARY_CSV_PATH)
+
+    summary_df = summary_df.sort_values(
+        "best_cv_auc",
+        ascending=False,
+    ).reset_index(drop=True)
+
+    return summary_df.head(top_k)
+
+
+def _evaluate_candidate_for_safe_selection(
+    model_name,
+    model,
+    cv_auc,
+    X_test,
+    y_test,
+    group,
+    numeric_cols,
+):
+    """
+    Compute full core SAFE selection metrics for one candidate model.
+
+    This is used for model selection before the final detailed evaluation.
+    """
+    y_probs = model.predict_proba(X_test)[:, 1]
+
+    auc_score = float(roc_auc_score(y_test, y_probs))
+
+    fairness_metrics, _, _ = _compute_fairness_metrics(
+        y_test,
+        y_probs,
+        group,
+        PRED_THRESHOLD,
+    )
+
+    robustness_metrics = _compute_robustness_metrics(
+        model,
+        X_test,
+        y_test,
+        numeric_cols,
+    )
+
+    baseline_safe = (
+        W_AUC * auc_score
+        + W_FAIR * fairness_metrics["fairness_aggregate"]
+        + W_ROB * robustness_metrics["robustness_aggregate"]
+    )
+
+    return {
+        "model": model_name,
+        "cv_auc": float(cv_auc),
+        "test_auc": float(auc_score),
+        "fairness_aggregate": float(fairness_metrics["fairness_aggregate"]),
+        "robustness_aggregate": float(robustness_metrics["robustness_aggregate"]),
+        "baseline_safe_score": float(baseline_safe),
+        "decision": "APPROVED" if baseline_safe >= APPROVAL_THRESHOLD else "REJECTED",
+    }
+
+
+def _save_safe_model_selection_plot(selection_df):
+    """
+    Save a bar chart comparing top candidate models by baseline SAFE score.
+    """
+    plot_df = selection_df.sort_values("baseline_safe_score", ascending=True)
+
+    plt.figure(figsize=(9, 6))
+    plt.barh(plot_df["model"], plot_df["baseline_safe_score"])
+    plt.xlabel("Baseline SAFE Score")
+    plt.ylabel("Model")
+    plt.title("Top Candidate Models by SAFE Score")
+    plt.xlim(0.0, 1.0)
+    plt.tight_layout()
+    plt.savefig(SAFE_MODEL_SELECTION_PLOT_PATH, dpi=200)
+    plt.close()
+
+
+def _run_safe_model_selection(X_test, y_test, group, numeric_cols, top_k=4):
+    """
+    Evaluate top-k models using core SAFE metrics and select the best model.
+
+    Selection rule:
+    1. Start from top-k models by CV AUC.
+    2. Compute test AUC, fairness aggregate, robustness aggregate, and SAFE score.
+    3. Select the model with the highest baseline SAFE score.
+    """
+    top_models_df = _select_top_models_by_cv(top_k=top_k)
+
+    rows = []
+
+    for _, row in top_models_df.iterrows():
+        model_name = row["model"]
+        cv_auc = row["best_cv_auc"]
+
+        model_path = ALL_MODEL_PATHS[model_name]
+        candidate_model = joblib.load(model_path)
+
+        result_row = _evaluate_candidate_for_safe_selection(
+            model_name=model_name,
+            model=candidate_model,
+            cv_auc=cv_auc,
+            X_test=X_test,
+            y_test=y_test,
+            group=group,
+            numeric_cols=numeric_cols,
+        )
+
+        rows.append(result_row)
+
+    selection_df = pd.DataFrame(rows).sort_values(
+        "baseline_safe_score",
+        ascending=False,
+    ).reset_index(drop=True)
+
+    selected_model_name = selection_df.iloc[0]["model"]
+    selected_model = joblib.load(ALL_MODEL_PATHS[selected_model_name])
+
+    selection_df.to_csv(SAFE_MODEL_SELECTION_CSV_PATH, index=False)
+    _save_safe_model_selection_plot(selection_df)
+
+    with open(SAFE_MODEL_SELECTION_REPORT_PATH, "w", encoding="utf-8") as f:
+        f.write("# SAFE Model Selection Report\n\n")
+        f.write(
+            "This report compares the top candidate models using core SAFE governance metrics. "
+            "The top candidates are first selected by cross-validation AUC, then compared using "
+            "test AUC, fairness aggregate, robustness aggregate, and baseline SAFE score.\n\n"
+        )
+
+        f.write("## Selection Rule\n\n")
+        f.write(
+            "The selected operational governance model is the candidate with the highest "
+            "baseline SAFE score among the top CV-AUC candidates.\n\n"
+        )
+
+        f.write(f"## Selected Model\n\n")
+        f.write(f"- Selected model: {selected_model_name}\n")
+        f.write(f"- Selected baseline SAFE score: {selection_df.iloc[0]['baseline_safe_score']:.4f}\n\n")
+
+        f.write("## SAFE Model Selection Table\n\n")
+        f.write(selection_df.to_markdown(index=False))
+        f.write("\n")
+
+    return selected_model_name, selected_model, selection_df
+
+def _run_top_models_shap_rge_comparison(
+    safe_model_selection_df,
+    X_test,
+    sample_size=100,
+):
+    """
+    Run SHAP-RGE comparison for the top selected models.
+
+    The selected models come from SAFE model selection.
+    For each model:
+    - load the saved model artifact
+    - compute RGE feature importance
+    - compute SHAP feature importance
+    - compare their rankings using Spearman correlation
+    """
+    all_merged_rows = []
+    summary_rows = []
+
+    for _, row in safe_model_selection_df.iterrows():
+        model_name = row["model"]
+        model_path = ALL_MODEL_PATHS[model_name]
+        candidate_model = joblib.load(model_path)
+
+        # RGE for this candidate model
+        rge_importance_df = compute_rge_feature_importance(
+            model=candidate_model,
+            X_test=X_test,
+        )
+
+        # SHAP for this candidate model
+        shap_df, shap_status = compute_general_shap_importance(
+            model=candidate_model,
+            X_test=X_test,
+            model_name=model_name,
+            sample_size=sample_size,
+            random_state=RANDOM_STATE,
+        )
+
+        # Merge RGE and SHAP
+        merged = merge_rge_and_shap(
+            rge_importance_df=rge_importance_df,
+            shap_df=shap_df,
+            model_name=model_name,
+        )
+
+        spearman_corr = compute_rge_shap_spearman(merged)
+
+        if not merged.empty:
+            all_merged_rows.append(merged)
+
+        summary_rows.append({
+            "model": model_name,
+            "status": shap_status["status"],
+            "shap_method": shap_status["shap_method"],
+            "sample_size": shap_status["sample_size"],
+            "rge_shap_spearman": spearman_corr,
+            "error": shap_status["error"],
+        })
+
+    if all_merged_rows:
+        comparison_df = pd.concat(all_merged_rows, ignore_index=True)
+    else:
+        comparison_df = pd.DataFrame()
+
+    summary_df = pd.DataFrame(summary_rows)
+
+    comparison_df.to_csv(TOP_MODELS_SHAP_RGE_COMPARISON_CSV_PATH, index=False)
+    write_top_models_shap_rge_report(
+        summary_df=summary_df,
+        output_report_path=TOP_MODELS_SHAP_RGE_REPORT_PATH,
+    )
+
+    return summary_df, comparison_df
+
 @tool
 def evaluation_and_risk_tool(description: str):
     """
@@ -779,14 +1014,43 @@ def evaluation_and_risk_tool(description: str):
         # ------------------------------------------------------------
         # LOAD MODEL + TEST DATA
         # ------------------------------------------------------------
-        model = joblib.load(MODEL_PATH)
         X_test = pd.read_csv(TEST_FEATURES_PATH)
         y_test = _read_target_series(TEST_TARGET_PATH)
 
-        # Predicted probabilities for positive class
+        with open(DATACARD_PATH, "r", encoding="utf-8") as f:
+            dc = json.load(f)
+
+        config = dc.get("config", {})
+        numeric_cols = [c for c in dc.get("numeric_features_raw", []) if c in X_test.columns]
+
+        group = pd.read_csv(SENSITIVE_TEST_PATH).iloc[:, 0].astype(str).fillna("NA")
+
+        # ------------------------------------------------------------
+        # SAFE MODEL SELECTION
+        # ------------------------------------------------------------
+        selected_model_name, model, safe_model_selection_df = _run_safe_model_selection(
+            X_test=X_test,
+            y_test=y_test,
+            group=group,
+            numeric_cols=numeric_cols,
+            top_k=4,
+        )
+
+        top_models_shap_rge_summary_df, top_models_shap_rge_comparison_df = (
+            _run_top_models_shap_rge_comparison(
+                safe_model_selection_df=safe_model_selection_df,
+                X_test=X_test,
+                sample_size=100,
+            )
+        )
+
+        # Save the selected SAFE model as the final governance model.
+        joblib.dump(model, MODEL_PATH)
+
+        # Predicted probabilities for selected model
         y_probs = model.predict_proba(X_test)[:, 1]
 
-        # Baseline predictive performance
+        # Baseline predictive performance for selected model
         auc_score = float(roc_auc_score(y_test, y_probs))
 
         # Additional classification and calibration metrics.
@@ -801,17 +1065,6 @@ def evaluation_and_risk_tool(description: str):
             confusion_matrix_df=confusion_matrix_df,
             calibration_df=calibration_df,
         )
-
-        # Load preprocessing metadata from the Data Card
-        with open(DATACARD_PATH, "r", encoding="utf-8") as f:
-            dc = json.load(f)
-
-        config = dc.get("config", {})
-        numeric_cols = [c for c in dc.get("numeric_features_raw", []) if c in X_test.columns]
-
-        # Load fairness grouping information
-        group = pd.read_csv(SENSITIVE_TEST_PATH).iloc[:, 0].astype(str).fillna("NA")
-
         # ------------------------------------------------------------
         # FAIRNESS EVALUATION
         # ------------------------------------------------------------
@@ -970,14 +1223,44 @@ def evaluation_and_risk_tool(description: str):
         # ------------------------------------------------------------
         # RGE VS SHAP COMPARISON
         # ------------------------------------------------------------
-        shap_comparison_result = compare_rge_with_shap(
+        selected_model_shap_df, selected_model_shap_status = compute_general_shap_importance(
             model=model,
             X_test=X_test,
-            rge_importance_df=rge_importance_df,
-            output_csv_path=SHAP_RGE_COMPARISON_CSV_PATH,
-            output_report_path=SHAP_RGE_REPORT_PATH,
+            model_name=selected_model_name,
+            sample_size=100,
+            random_state=RANDOM_STATE,
         )
 
+        selected_model_merged_shap_rge = merge_rge_and_shap(
+            rge_importance_df=rge_importance_df,
+            shap_df=selected_model_shap_df,
+            model_name=selected_model_name,
+        )
+
+        selected_model_spearman = compute_rge_shap_spearman(
+            selected_model_merged_shap_rge
+        )
+
+        selected_model_merged_shap_rge.to_csv(
+            SHAP_RGE_COMPARISON_CSV_PATH,
+            index=False,
+        )
+
+        with open(SHAP_RGE_REPORT_PATH, "w", encoding="utf-8") as f:
+            f.write("# RGE vs SHAP Comparison Report\n\n")
+            f.write(f"Selected operational model: {selected_model_name}\n\n")
+            f.write(f"- SHAP status: {selected_model_shap_status['status']}\n")
+            f.write(f"- SHAP method: {selected_model_shap_status['shap_method']}\n")
+            f.write(f"- Spearman correlation: {selected_model_spearman}\n\n")
+            f.write("## Top RGE-SHAP Comparison Rows\n\n")
+            f.write(selected_model_merged_shap_rge.head(20).to_markdown(index=False))
+            f.write("\n")
+
+        shap_comparison_result = {
+            "status": selected_model_shap_status["status"],
+            "spearman_corr": selected_model_spearman,
+            "compared_features": int(len(selected_model_merged_shap_rge)),
+        }
         # ------------------------------------------------------------
         # MULTI-MODEL SAFE AI PAPER METRIC COMPARISON
         # ------------------------------------------------------------
@@ -1023,11 +1306,17 @@ def evaluation_and_risk_tool(description: str):
         # EXPLAINABILITY SNAPSHOT
         # ------------------------------------------------------------
         # Extract model feature importances from XGBoost
+        if hasattr(model, "feature_importances_"):
+            importances = model.feature_importances_
+        elif hasattr(model, "coef_"):
+            importances = np.abs(model.coef_).ravel()
+        else:
+            importances = np.zeros(len(X_test.columns))
+
         importance_df = pd.DataFrame({
             "feature": X_test.columns,
-            "importance": model.feature_importances_
+            "importance": importances,
         }).sort_values("importance", ascending=False).reset_index(drop=True)
-
         # ------------------------------------------------------------
         # WRITE EVALUATION REPORT
         # ------------------------------------------------------------
@@ -1046,6 +1335,10 @@ def evaluation_and_risk_tool(description: str):
 - **Fairness Aggregate**: {fairness_metrics['fairness_aggregate']:.4f}
 - **Robustness Aggregate**: {robustness_metrics['robustness_aggregate']:.4f}
 - **Baseline SAFE Score**: {baseline_safe:.4f}
+- **Selected Operational Model**: {selected_model_name}
+- **SAFE Model Selection File**: {SAFE_MODEL_SELECTION_CSV_PATH.name}
+- **SAFE Model Selection Plot**: {SAFE_MODEL_SELECTION_PLOT_PATH.name}
+- **SAFE Model Selection Report**: {SAFE_MODEL_SELECTION_REPORT_PATH.name}
 - **Ensemble Auditing Enabled**: True
 - **Auditors Used**: performance_auditor, fairness_auditor, robustness_auditor
 - **Mitigation Report File**: {MITIGATION_REPORT_PATH.name}
@@ -1072,6 +1365,8 @@ def evaluation_and_risk_tool(description: str):
 - **RGE Plot Files**: {RGE_PLOT_PATH.name}, {RGE_IMPORTANCE_PLOT_PATH.name}
 - **AURGA**: {aurga:.4f}
 - **SHAP-RGE Spearman Correlation**: {shap_comparison_result.get('spearman_corr')}
+- **Top Models SHAP-RGE Comparison File**: {TOP_MODELS_SHAP_RGE_COMPARISON_CSV_PATH.name}
+- **Top Models SHAP-RGE Report**: {TOP_MODELS_SHAP_RGE_REPORT_PATH.name}
 - **Model Metrics Comparison File**: {MODEL_METRICS_COMPARISON_CSV_PATH.name}
 - **Compliance Score File**: {COMPLIANCE_SCORE_CSV_PATH.name}
 - **Compliance Score Plot**: {COMPLIANCE_SCORE_PLOT_PATH.name}
@@ -1095,6 +1390,31 @@ def evaluation_and_risk_tool(description: str):
 - Sensitive feature: {config['sensitive_feature']}
 - Drop sensitive from model: {config['drop_sensitive_from_model']}
 - Decision rule: {config['decision_rule']}
+
+## SAFE Model Selection
+
+The system first trained multiple candidate models and selected the top candidates by cross-validation AUC. It then computed core SAFE governance metrics for the top candidates, including test AUC, fairness aggregate, robustness aggregate, and baseline SAFE score.
+
+Selected operational governance model: {selected_model_name}
+
+SAFE model selection comparison:
+{safe_model_selection_df.to_markdown(index=False)}
+
+SAFE model selection artifacts:
+- SAFE model selection CSV: {SAFE_MODEL_SELECTION_CSV_PATH.name}
+- SAFE model selection plot: {SAFE_MODEL_SELECTION_PLOT_PATH.name}
+- SAFE model selection report: {SAFE_MODEL_SELECTION_REPORT_PATH.name}
+
+## Top Models SHAP-RGE Comparison
+
+The system also compares RGE-based feature importance with SHAP-based feature importance for the top four selected candidate models. This makes the explainability comparison broader than the selected operational model alone.
+
+Top-model SHAP-RGE summary:
+{top_models_shap_rge_summary_df.to_markdown(index=False)}
+
+Top-model SHAP-RGE artifacts:
+- Comparison CSV: {TOP_MODELS_SHAP_RGE_COMPARISON_CSV_PATH.name}
+- Report: {TOP_MODELS_SHAP_RGE_REPORT_PATH.name}
 
 ## Accuracy
 - AUC: {auc_score:.4f}

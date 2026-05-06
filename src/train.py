@@ -3,6 +3,9 @@
 import joblib
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from crewai.tools import tool
 
@@ -17,6 +20,8 @@ from src.paths import (
     MODEL_PATH,
     TRAIN_FEATURES_PATH,
     TRAIN_TARGET_PATH,
+    MODEL_SELECTION_SUMMARY_CSV_PATH,
+    MODEL_CV_AUC_PLOT_PATH,
 )
 
 
@@ -149,6 +154,19 @@ def _write_model_comparison_report(summary_df):
         f.write(summary_df.to_markdown(index=False))
         f.write("\n")
 
+def _save_model_cv_auc_plot(summary_df):
+    """Save a bar chart comparing candidate models by CV AUC."""
+    plot_df = summary_df.sort_values("best_cv_auc", ascending=True)
+
+    plt.figure(figsize=(9, 6))
+    plt.barh(plot_df["model"], plot_df["best_cv_auc"])
+    plt.xlabel("Best CV AUC")
+    plt.ylabel("Model")
+    plt.title("Candidate Model Comparison by Cross-Validation AUC")
+    plt.xlim(0.0, 1.0)
+    plt.tight_layout()
+    plt.savefig(MODEL_CV_AUC_PLOT_PATH, dpi=200)
+    plt.close()
 
 @tool
 def model_training_tool(description: str):
@@ -192,12 +210,16 @@ def model_training_tool(description: str):
         cv_results_df.to_csv(CV_RESULTS_PATH, index=False)
         _write_model_card(summary_df)
         _write_model_comparison_report(summary_df)
+        summary_df.to_csv(MODEL_SELECTION_SUMMARY_CSV_PATH, index=False)
+        _save_model_cv_auc_plot(summary_df)
 
         return (
             "SUCCESS: Multiple model candidates trained with cross-validation and hyperparameter search. "
-            f"Saved governance model: {MODEL_PATH.name}. "
+            f"Saved preliminary governance model: {MODEL_PATH.name}. "
             f"Generated model card: docs/{MODEL_CARD_PATH.name}. "
             f"Generated CV results: reports/{CV_RESULTS_PATH.name}. "
+            f"Generated model selection summary: reports/{MODEL_SELECTION_SUMMARY_CSV_PATH.name}. "
+            f"Generated model CV AUC plot: reports/figures/{MODEL_CV_AUC_PLOT_PATH.name}. "
             f"Generated model comparison report: reports/{MODEL_COMPARISON_REPORT_PATH.name}."
         )
 

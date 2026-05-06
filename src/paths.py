@@ -85,6 +85,13 @@ OUTLIER_REPORT_PATH = REPORTS_DIR / "outlier_analysis_report.md"
 MODEL_COMPARISON_REPORT_PATH = REPORTS_DIR / "model_comparison_report.md"
 CV_RESULTS_PATH = REPORTS_DIR / "cv_results.csv"
 
+MODEL_SELECTION_SUMMARY_CSV_PATH = REPORTS_DIR / "model_selection_summary.csv"
+MODEL_CV_AUC_PLOT_PATH = FIGURES_DIR / "model_cv_auc_comparison.png"
+
+SAFE_MODEL_SELECTION_CSV_PATH = REPORTS_DIR / "safe_model_selection_comparison.csv"
+SAFE_MODEL_SELECTION_PLOT_PATH = FIGURES_DIR / "safe_model_selection_comparison.png"
+SAFE_MODEL_SELECTION_REPORT_PATH = REPORTS_DIR / "safe_model_selection_report.md"
+
 MITIGATION_REPORT_PATH = REPORTS_DIR / "mitigation_report.md"
 MITIGATION_SEARCH_CSV_PATH = REPORTS_DIR / "mitigation_threshold_search.csv"
 MITIGATION_GROUP_BEFORE_CSV_PATH = REPORTS_DIR / "mitigation_group_table_before.csv"
@@ -130,6 +137,8 @@ RGE_REPORT_PATH = REPORTS_DIR / "rge_report.md"
 
 SHAP_RGE_COMPARISON_CSV_PATH = REPORTS_DIR / "shap_rge_comparison.csv"
 SHAP_RGE_REPORT_PATH = REPORTS_DIR / "shap_rge_report.md"
+TOP_MODELS_SHAP_RGE_COMPARISON_CSV_PATH = REPORTS_DIR / "top_models_shap_rge_comparison.csv"
+TOP_MODELS_SHAP_RGE_REPORT_PATH = REPORTS_DIR / "top_models_shap_rge_report.md"
 
 MODEL_METRICS_COMPARISON_CSV_PATH = REPORTS_DIR / "model_metrics_comparison.csv"
 COMPLIANCE_SCORE_CSV_PATH = REPORTS_DIR / "compliance_score_comparison.csv"
