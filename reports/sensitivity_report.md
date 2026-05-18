@@ -4,39 +4,51 @@ Evaluates how SAFE decisions change under variations in weights, thresholds, sen
 
 ## Scenario Table
 
-| scenario                          |   prediction_threshold |   approval_threshold |   w_auc |   w_fair |   w_rob | sensitive_feature   |      auc |   fairness_aggregate |   robustness_aggregate |   safe_score | decision   |   delta_vs_base |
-|:----------------------------------|-----------------------:|---------------------:|--------:|---------:|--------:|:--------------------|---------:|---------------------:|-----------------------:|-------------:|:-----------|----------------:|
-| sensitive_feature=foreign_worker  |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | foreign_worker      | 0.808571 |             0.735242 |               0.965548 |     0.803302 | APPROVED   |       0.0976557 |
-| weights=(0.30,0.30,0.40)          |                   0.55 |                 0.75 |     0.3 |      0.3 |     0.4 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.79077  | APPROVED   |       0.0851234 |
-| weights=(0.50,0.30,0.20)          |                   0.55 |                 0.75 |     0.5 |      0.3 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.759374 | APPROVED   |       0.0537282 |
-| prediction_threshold=0.6          |                   0.6  |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.604167 |               0.965548 |     0.737764 | REJECTED   |       0.0321181 |
-| approval_threshold=0.7            |                   0.55 |                 0.7  |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | APPROVED   |       0         |
-| approval_threshold=0.75           |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
-| approval_threshold=0.8            |                   0.55 |                 0.8  |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
-| base                              |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
-| prediction_threshold=0.55         |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
-| sensitive_feature=personal_status |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
-| weights=(0.30,0.50,0.20)          |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.539931 |               0.965548 |     0.705646 | REJECTED   |       0         |
-| prediction_threshold=0.45         |                   0.45 |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.404412 |               0.965548 |     0.637887 | REJECTED   |      -0.0677594 |
-| prediction_threshold=0.5          |                   0.5  |                 0.75 |     0.3 |      0.5 |     0.2 | personal_status     | 0.808571 |             0.404412 |               0.965548 |     0.637887 | REJECTED   |      -0.0677594 |
-| sensitive_feature=age             |                   0.55 |                 0.75 |     0.3 |      0.5 |     0.2 | age                 | 0.808571 |             0        |               0.965548 |     0.435681 | REJECTED   |      -0.269965  |
+| scenario                          |   prediction_threshold |   approval_threshold |   w_rga |   w_rgr |   w_rge |   w_fair | sensitive_feature   |    aurga |   rgr_aggregate |    aurge |   fairness_aggregate |   safe_score | decision   |   delta_vs_base |
+|:----------------------------------|-----------------------:|---------------------:|--------:|--------:|--------:|---------:|:--------------------|---------:|----------------:|---------:|---------------------:|-------------:|:-----------|----------------:|
+| sensitive_feature=foreign_worker  |                   0.55 |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | foreign_worker      | 0.709529 |        0.928066 | 0.971187 |             0.713316 |     0.830524 | APPROVED   |      0.0433464  |
+| weights=(0.20,0.30,0.25,0.25)     |                   0.55 |                 0.75 |    0.2  |    0.3  |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.798105 | APPROVED   |      0.0109268  |
+| approval_threshold=0.7            |                   0.55 |                 0.7  |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.787178 | APPROVED   |      0          |
+| approval_threshold=0.75           |                   0.55 |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.787178 | APPROVED   |      0          |
+| approval_threshold=0.8            |                   0.55 |                 0.8  |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.787178 | REJECTED   |      0          |
+| base                              |                   0.55 |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.787178 | APPROVED   |      0          |
+| prediction_threshold=0.55         |                   0.55 |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.787178 | APPROVED   |      0          |
+| prediction_threshold=0.6          |                   0.6  |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.787178 | APPROVED   |      0          |
+| sensitive_feature=personal_status |                   0.55 |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.787178 | APPROVED   |      0          |
+| weights=(0.25,0.25,0.25,0.25)     |                   0.55 |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.787178 | APPROVED   |      0          |
+| weights=(0.20,0.20,0.30,0.30)     |                   0.55 |                 0.75 |    0.2  |    0.2  |    0.3  |     0.3  | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.780854 | APPROVED   |     -0.00632388 |
+| weights=(0.30,0.25,0.20,0.25)     |                   0.55 |                 0.75 |    0.3  |    0.25 |    0.2  |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.539931 |     0.774095 | APPROVED   |     -0.0130829  |
+| prediction_threshold=0.45         |                   0.45 |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.459559 |     0.767085 | APPROVED   |     -0.0200929  |
+| prediction_threshold=0.5          |                   0.5  |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | personal_status     | 0.709529 |        0.928066 | 0.971187 |             0.415441 |     0.756056 | APPROVED   |     -0.0311223  |
+| sensitive_feature=age             |                   0.55 |                 0.75 |    0.25 |    0.25 |    0.25 |     0.25 | age                 | 0.709529 |        0.928066 | 0.971187 |             0        |     0.652195 | REJECTED   |     -0.134983   |
 
 ## Main Effects
 
 | factor               |   mean_effect_range |
 |:---------------------|--------------------:|
-| prediction_threshold |           0.079902  |
-| w_fair               |           0.0640682 |
-| w_rob                |           0.0313953 |
+| w_fair               |           0.114264  |
+| w_rge                |           0.0482471 |
+| w_rgr                |           0.043935  |
+| prediction_threshold |           0.0311223 |
+| w_rga                |           0.0220814 |
 | approval_threshold   |           0         |
 
 ## Pairwise Interactions
 
 | factor_a             | factor_b           |   interaction_strength |
 |:---------------------|:-------------------|-----------------------:|
-| prediction_threshold | w_fair             |            0.00558789  |
-| prediction_threshold | w_rob              |            1.66533e-16 |
-| prediction_threshold | approval_threshold |            2.77556e-17 |
-| w_fair               | w_rob              |            1.23358e-17 |
-| approval_threshold   | w_fair             |            0           |
-| approval_threshold   | w_rob              |            0           |
+| prediction_threshold | w_fair             |            0.00343711  |
+| prediction_threshold | w_rgr              |            0.00170718  |
+| prediction_threshold | w_rge              |            0.00170718  |
+| prediction_threshold | w_rga              |            0.00170718  |
+| approval_threshold   | w_rgr              |            1.11022e-16 |
+| w_rga                | w_rgr              |            1.11022e-16 |
+| w_rgr                | w_rge              |            1.11022e-16 |
+| prediction_threshold | approval_threshold |            8.32667e-17 |
+| approval_threshold   | w_rga              |            7.40149e-17 |
+| approval_threshold   | w_rge              |            7.40149e-17 |
+| w_rga                | w_rge              |            6.16791e-17 |
+| approval_threshold   | w_fair             |            2.96059e-17 |
+| w_rga                | w_fair             |          nan           |
+| w_rgr                | w_fair             |          nan           |
+| w_rge                | w_fair             |          nan           |

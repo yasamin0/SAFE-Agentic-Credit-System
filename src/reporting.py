@@ -10,9 +10,10 @@ from src.config import (
     PRED_THRESHOLD,
     RANDOM_STATE,
     SENSITIVE_FEATURE,
-    W_AUC,
+    W_RGA,
+    W_RGR,
+    W_RGE,
     W_FAIR,
-    W_ROB,
 )
 from src.paths import (
     EVALUATION_REPORT_PATH,
@@ -69,11 +70,12 @@ def _parse_evaluation_metrics(report_text):
 
 
 def _compute_safe_decision(metrics):
-    """Compute final SAFE score and decision."""
+    """Compute final SAFE score and decision using equal SAFE paper-based metrics."""
     final_score = (
-        W_AUC * metrics["auc"]
+        W_RGA * metrics["aurga"]
+        + W_RGR * metrics["rgr"]
+        + W_RGE * metrics["aurge"]
         + W_FAIR * metrics["fair"]
-        + W_ROB * metrics["rob"]
     )
 
     decision = "APPROVED" if final_score >= APPROVAL_THRESHOLD else "REJECTED"
@@ -82,15 +84,15 @@ def _compute_safe_decision(metrics):
 
 
 def _get_weakest_dimension(metrics):
-    """Return the weakest core SAFE dimension."""
+    """Return the weakest final SAFE dimension."""
     core_scores = {
-        "AUC": metrics["auc"],
+        "RGA / AURGA": metrics["aurga"],
+        "RGR Aggregate": metrics["rgr"],
+        "RGE / AURGE": metrics["aurge"],
         "Fairness Aggregate": metrics["fair"],
-        "Robustness Aggregate": metrics["rob"],
     }
 
     return min(core_scores, key=core_scores.get)
-
 
 def _build_system_card(metrics, final_score, decision):
     """Build the markdown system card."""
@@ -155,17 +157,19 @@ Mitigation interpretation:
 
 {mitigation_summary}
 ## SAFE Score Formula
-`SAFE Score = W_AUC*AUC + W_FAIR*Fairness_Aggregate + W_ROB*Robustness_Aggregate`
+`SAFE Score = W_RGA*AURGA + W_RGR*RGR_Aggregate + W_RGE*AURGE + W_FAIR*Fairness_Aggregate`
 
 Current weights:
-- W_AUC = {W_AUC:.3f}
+- W_RGA = {W_RGA:.3f}
+- W_RGR = {W_RGR:.3f}
+- W_RGE = {W_RGE:.3f}
 - W_FAIR = {W_FAIR:.3f}
-- W_ROB = {W_ROB:.3f}
 
 Current computation:
-- AUC = {metrics["auc"]:.4f}
+- AURGA = {metrics["aurga"]:.4f}
+- RGR Aggregate = {metrics["rgr"]:.4f}
+- AURGE = {metrics["aurge"]:.4f}
 - Fairness Aggregate = {metrics["fair"]:.4f}
-- Robustness Aggregate = {metrics["rob"]:.4f}
 - Final SAFE Score = {final_score:.4f}
 
 ## Main Reason for Decision
@@ -222,11 +226,14 @@ Fairness Aggregate: {metrics["fair"]:.4f}
 {sensitivity_excerpt}
 
 ## Governance Note
-This card separates two concepts:
-1. **SAFE Score**, which is the project governance score using AUC, fairness, and robustness.
-2. **Compliance Score**, which is the SAFE AI paper-style score using AURGA, AURGR, AURGE, and TOPSIS.
-"""
+This card uses the final SAFE score requested for this project:
+1. **RGA / AURGA** for rank-based accuracy.
+2. **RGR Aggregate** for rank-based robustness.
+3. **RGE / AURGE** for rank-based explainability.
+4. **Fairness Aggregate** for credit-lending fairness.
 
+All four dimensions use equal weights.
+"""
 
 @tool
 def governance_scoring_tool(description: str):
@@ -240,10 +247,15 @@ def governance_scoring_tool(description: str):
 
         metrics = _parse_evaluation_metrics(report_text)
 
-        if metrics["auc"] is None or metrics["fair"] is None or metrics["rob"] is None:
+        if (
+            metrics["aurga"] is None
+            or metrics["rgr"] is None
+            or metrics["aurge"] is None
+            or metrics["fair"] is None
+        ):
             return (
-                "REJECTED: Could not parse AUC/Fairness Aggregate/"
-                "Robustness Aggregate from evaluation_report.md."
+                "REJECTED: Could not parse AURGA/RGR Aggregate/"
+                "AURGE/Fairness Aggregate from evaluation_report.md."
             )
 
         final_score, decision = _compute_safe_decision(metrics)

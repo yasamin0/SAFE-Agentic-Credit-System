@@ -6,8 +6,8 @@ This report compares RGE feature ranking with SHAP feature ranking for the top s
 
 | model             | status    | shap_method      |   sample_size |   rge_shap_spearman | error   |
 |:------------------|:----------|:-----------------|--------------:|--------------------:|:--------|
-| Stacking Ensemble | completed | kernel_explainer |           100 |            0.899577 |         |
-| Voting Ensemble   | completed | kernel_explainer |           100 |            0.897462 |         |
+| Voting Ensemble   | completed | kernel_explainer |           100 |            0.899788 |         |
+| Stacking Ensemble | completed | kernel_explainer |           100 |            0.887943 |         |
 | XGBoost           | completed | xgboost_treeshap |           100 |            0.982526 |         |
 | Random Forest     | completed | tree_explainer   |           100 |            0.914754 |         |
 

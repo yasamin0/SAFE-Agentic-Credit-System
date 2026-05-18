@@ -36,9 +36,10 @@
     "prediction_threshold": 0.55,
     "approval_threshold": 0.75,
     "weights": {
-      "auc": 0.3,
-      "fairness": 0.5,
-      "robustness": 0.2
+      "rga": 0.25,
+      "rgr": 0.25,
+      "rge": 0.25,
+      "fairness": 0.25
     },
     "sensitive_feature": "personal_status",
     "alternative_sensitive_features": [
@@ -53,7 +54,7 @@
       "dropout_rate": 0.1,
       "missing_rate": 0.1
     },
-    "decision_rule": "APPROVED if SAFE_SCORE >= APPROVAL_THRESHOLD else REJECTED, where SAFE_SCORE = W_AUC*AUC + W_FAIR*FAIRNESS_AGG + W_ROB*ROBUSTNESS_AGG"
+    "decision_rule": "APPROVED if SAFE_SCORE >= APPROVAL_THRESHOLD else REJECTED, where SAFE_SCORE = W_RGA*AURGA + W_RGR*RGR_AGG + W_RGE*AURGE + W_FAIR*FAIRNESS_AGG"
   },
   "eda_artifacts": {
     "target_distribution": "eda_target_distribution.png",

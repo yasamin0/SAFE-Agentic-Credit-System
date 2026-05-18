@@ -1,6 +1,7 @@
 # src/evaluate.py
 
 import json
+import warnings
 
 import joblib
 import numpy as np
@@ -23,6 +24,9 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.model_selection import train_test_split
+from sklearn.exceptions import ConvergenceWarning
+
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 from src.config import (
     APPROVAL_THRESHOLD,
@@ -31,9 +35,10 @@ from src.config import (
     ROBUST_DROPOUT_RATE,
     ROBUST_MISSING_RATE,
     PRED_THRESHOLD,
-    W_AUC,
+    W_RGA,
+    W_RGR,
+    W_RGE,
     W_FAIR,
-    W_ROB,
 )
 
 from src.fairness import (
@@ -207,6 +212,18 @@ def _compute_robustness_metrics(model, X_test, y_test, numeric_cols):
 
     return scores
 
+def _compute_paper_safe_score(aurga, rgr_aggregate, aurge, fairness_aggregate):
+    """
+    Compute the final SAFE score using equal paper-based dimensions.
+
+    SAFE = W_RGA*AURGA + W_RGR*RGR + W_RGE*AURGE + W_FAIR*Fairness
+    """
+    return float(
+        W_RGA * aurga
+        + W_RGR * rgr_aggregate
+        + W_RGE * aurge
+        + W_FAIR * fairness_aggregate
+    )
 
 def _performance_auditor(auc_score):
     """
@@ -258,24 +275,16 @@ def _robustness_auditor(robustness_metrics):
 
 def _ensemble_auditor(auc_score, fairness_metrics, robustness_metrics):
     """
-    Combine the three auditors into one weighted SAFE score.
+    Keep legacy auditor outputs for reporting only.
 
-    SAFE score = W_AUC * performance
-               + W_FAIR * fairness
-               + W_ROB * robustness
+    This no longer computes the final SAFE score.
+    The final SAFE score is computed from:
+    AURGA, RGR Aggregate, AURGE, and Fairness Aggregate.
     """
     perf = _performance_auditor(auc_score)
     fair = _fairness_auditor(fairness_metrics)
     rob = _robustness_auditor(robustness_metrics)
 
-    # Weighted governance-style aggregation of the three auditor scores
-    ensemble_score = (
-        W_AUC * perf["score"]
-        + W_FAIR * fair["score"]
-        + W_ROB * rob["score"]
-    )
-
-    # Simple table representation for reporting
     auditor_df = pd.DataFrame([
         {"auditor": perf["auditor"], "score": perf["score"]},
         {"auditor": fair["auditor"], "score": fair["score"]},
@@ -286,281 +295,325 @@ def _ensemble_auditor(auc_score, fairness_metrics, robustness_metrics):
         "performance_auditor": perf,
         "fairness_auditor": fair,
         "robustness_auditor": rob,
-        "ensemble_score": float(ensemble_score),
         "auditor_table": auditor_df
     }
 
 
-def _sensitivity_analysis(model, X_test, y_test, config, numeric_cols):
+def _sensitivity_analysis(
+    model,
+    X_test,
+    y_test,
+    config,
+    aurga,
+    rgr_aggregate,
+    aurge,
+):
     """
-    Run scenario-based sensitivity analysis.
+    Run scenario-based sensitivity analysis using the final paper-based SAFE score.
 
-    Purpose:
-    Check how the final SAFE score changes if we vary:
-    - approval threshold
-    - prediction threshold
-    - policy weights
-    - sensitive feature definition
-
-    This helps reveal how stable or policy-sensitive the final decision is.
+    Final SAFE score:
+    W_RGA*AURGA + W_RGR*RGR + W_RGE*AURGE + W_FAIR*Fairness
     """
     y_probs = model.predict_proba(X_test)[:, 1]
     rows = []
 
-    # Base sensitive grouping used in the current run
     base_group = pd.read_csv(SENSITIVE_TEST_PATH).iloc[:, 0].astype(str).fillna("NA")
 
     fairness_metrics, _, _ = _compute_fairness_metrics(
-        y_test, y_probs, base_group, config["prediction_threshold"]
+        y_test,
+        y_probs,
+        base_group,
+        config["prediction_threshold"],
     )
-    robustness_metrics = _compute_robustness_metrics(model, X_test, y_test, numeric_cols)
-    base_auc = float(roc_auc_score(y_test, y_probs))
 
-    def add_row(label, auc, fair, rob, w_auc, w_fair, w_rob, approval_thr, pred_thr, sensitive_feature):
-        """
-        Helper for storing one scenario in the sensitivity table.
-        """
-        safe_score = (w_auc * auc) + (w_fair * fair) + (w_rob * rob)
+    def add_row(
+        label,
+        fair,
+        w_rga,
+        w_rgr,
+        w_rge,
+        w_fair,
+        approval_thr,
+        pred_thr,
+        sensitive_feature,
+    ):
+        safe_score = (
+            w_rga * aurga
+            + w_rgr * rgr_aggregate
+            + w_rge * aurge
+            + w_fair * fair
+        )
 
         rows.append({
             "scenario": label,
             "prediction_threshold": pred_thr,
             "approval_threshold": approval_thr,
-            "w_auc": w_auc,
+            "w_rga": w_rga,
+            "w_rgr": w_rgr,
+            "w_rge": w_rge,
             "w_fair": w_fair,
-            "w_rob": w_rob,
             "sensitive_feature": sensitive_feature,
-            "auc": auc,
+            "aurga": aurga,
+            "rgr_aggregate": rgr_aggregate,
+            "aurge": aurge,
             "fairness_aggregate": fair,
-            "robustness_aggregate": rob,
             "safe_score": safe_score,
             "decision": "APPROVED" if safe_score >= approval_thr else "REJECTED",
         })
 
-    # ------------------------------------------------------------
-    # BASE SCENARIO
-    # ------------------------------------------------------------
+    # Base scenario
     add_row(
         "base",
-        base_auc,
         fairness_metrics["fairness_aggregate"],
-        robustness_metrics["robustness_aggregate"],
-        config["weights"]["auc"],
+        config["weights"]["rga"],
+        config["weights"]["rgr"],
+        config["weights"]["rge"],
         config["weights"]["fairness"],
-        config["weights"]["robustness"],
         config["approval_threshold"],
         config["prediction_threshold"],
         config["sensitive_feature"],
     )
 
-    # ------------------------------------------------------------
-    # VARY APPROVAL THRESHOLD
-    # ------------------------------------------------------------
+    # Vary approval threshold
     for approval_thr in [0.70, 0.75, 0.80]:
         add_row(
             f"approval_threshold={approval_thr}",
-            base_auc,
             fairness_metrics["fairness_aggregate"],
-            robustness_metrics["robustness_aggregate"],
-            config["weights"]["auc"],
+            config["weights"]["rga"],
+            config["weights"]["rgr"],
+            config["weights"]["rge"],
             config["weights"]["fairness"],
-            config["weights"]["robustness"],
             approval_thr,
             config["prediction_threshold"],
             config["sensitive_feature"],
         )
 
-    # ------------------------------------------------------------
-    # VARY PREDICTION THRESHOLD
-    # ------------------------------------------------------------
+    # Vary prediction threshold
     for pred_thr in [0.45, 0.50, 0.55, 0.60]:
-        fair_var, _, _ = _compute_fairness_metrics(y_test, y_probs, base_group, pred_thr)
+        fair_var, _, _ = _compute_fairness_metrics(
+            y_test,
+            y_probs,
+            base_group,
+            pred_thr,
+        )
+
         add_row(
             f"prediction_threshold={pred_thr}",
-            base_auc,
             fair_var["fairness_aggregate"],
-            robustness_metrics["robustness_aggregate"],
-            config["weights"]["auc"],
+            config["weights"]["rga"],
+            config["weights"]["rgr"],
+            config["weights"]["rge"],
             config["weights"]["fairness"],
-            config["weights"]["robustness"],
             config["approval_threshold"],
             pred_thr,
             config["sensitive_feature"],
         )
 
-    # ------------------------------------------------------------
-    # VARY SAFE POLICY WEIGHTS
-    # ------------------------------------------------------------
+    # Vary SAFE weights
     weight_sets = [
-        (0.50, 0.30, 0.20),
-        (0.30, 0.50, 0.20),
-        (0.30, 0.30, 0.40),
+        (0.25, 0.25, 0.25, 0.25),
+        (0.30, 0.25, 0.20, 0.25),
+        (0.20, 0.30, 0.25, 0.25),
+        (0.20, 0.20, 0.30, 0.30),
     ]
 
-    for wa, wf, wr in weight_sets:
-        # Normalize candidate weights so they sum to 1
-        s = wa + wf + wr
-        wa, wf, wr = wa / s, wf / s, wr / s
+    for w_rga, w_rgr, w_rge, w_fair in weight_sets:
+        s = w_rga + w_rgr + w_rge + w_fair
+        w_rga = w_rga / s
+        w_rgr = w_rgr / s
+        w_rge = w_rge / s
+        w_fair = w_fair / s
 
         add_row(
-            f"weights=({wa:.2f},{wf:.2f},{wr:.2f})",
-            base_auc,
+            f"weights=({w_rga:.2f},{w_rgr:.2f},{w_rge:.2f},{w_fair:.2f})",
             fairness_metrics["fairness_aggregate"],
-            robustness_metrics["robustness_aggregate"],
-            wa,
-            wf,
-            wr,
+            w_rga,
+            w_rgr,
+            w_rge,
+            w_fair,
             config["approval_threshold"],
             config["prediction_threshold"],
             config["sensitive_feature"],
         )
 
-    # ------------------------------------------------------------
-    # VARY SENSITIVE FEATURE DEFINITION
-    # ------------------------------------------------------------
-    # Rebuild a raw-data test split so alternative sensitive columns can be read directly
+    # Vary sensitive feature definition
     original_df = pd.read_csv(RAW_DATA_PATH)
     X = original_df.drop("CreditRisk", axis=1)
     y = original_df["CreditRisk"]
+
     _, X_test_raw, _, _ = train_test_split(
-        X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
+        X,
+        y,
+        test_size=0.2,
+        random_state=RANDOM_STATE,
+        stratify=y,
     )
 
     for sf in [config["sensitive_feature"]] + config["alternative_sensitive_features"]:
         if sf in X_test_raw.columns:
             grp = X_test_raw[sf].astype(str).fillna("NA")
+
             fair_sf, _, _ = _compute_fairness_metrics(
-                y_test, y_probs, grp, config["prediction_threshold"]
+                y_test,
+                y_probs,
+                grp,
+                config["prediction_threshold"],
             )
 
             add_row(
                 f"sensitive_feature={sf}",
-                base_auc,
                 fair_sf["fairness_aggregate"],
-                robustness_metrics["robustness_aggregate"],
-                config["weights"]["auc"],
+                config["weights"]["rga"],
+                config["weights"]["rgr"],
+                config["weights"]["rge"],
                 config["weights"]["fairness"],
-                config["weights"]["robustness"],
                 config["approval_threshold"],
                 config["prediction_threshold"],
                 sf,
             )
 
-    # Convert all scenarios into a sorted DataFrame
     sens_df = pd.DataFrame(rows).drop_duplicates(subset=["scenario"])
 
-    # Compare every scenario against the base SAFE score
     sens_df["delta_vs_base"] = sens_df["safe_score"] - float(
         sens_df.loc[sens_df["scenario"] == "base", "safe_score"].iloc[0]
     )
 
-    sens_df = sens_df.sort_values(["safe_score", "scenario"], ascending=[False, True]).reset_index(drop=True)
+    sens_df = sens_df.sort_values(
+        ["safe_score", "scenario"],
+        ascending=[False, True],
+    ).reset_index(drop=True)
+
     return sens_df
-
-
-def _interaction_analysis(model, X_test, y_test, config, numeric_cols):
+def _interaction_analysis(
+    model,
+    X_test,
+    y_test,
+    aurga,
+    rgr_aggregate,
+    aurge,
+):
     """
-    Study main effects and pairwise interactions among governance settings.
-
-    This analysis explores how combinations of:
-    - prediction threshold
-    - approval threshold
-    - fairness weight
-    - robustness weight
-
-    influence the SAFE score.
+    Study interactions among governance settings using the final paper-based SAFE score.
     """
     y_probs = model.predict_proba(X_test)[:, 1]
     group = pd.read_csv(SENSITIVE_TEST_PATH).iloc[:, 0].astype(str).fillna("NA")
 
     pred_threshold_values = [0.45, 0.50, 0.55, 0.60]
     approval_threshold_values = [0.70, 0.75, 0.80]
-    fair_weight_values = [0.3, 0.4, 0.5]
-    rob_weight_values = [0.2, 0.3, 0.4]
+
+    rga_weight_values = [0.20, 0.25, 0.30]
+    rgr_weight_values = [0.20, 0.25, 0.30]
+    rge_weight_values = [0.20, 0.25, 0.30]
 
     rows = []
 
-    # Evaluate a grid of policy combinations
     for pred_thr in pred_threshold_values:
-        fairness_metrics, _, _ = _compute_fairness_metrics(y_test, y_probs, group, pred_thr)
+        fairness_metrics, _, _ = _compute_fairness_metrics(
+            y_test,
+            y_probs,
+            group,
+            pred_thr,
+        )
 
         for approval_thr in approval_threshold_values:
-            for fair_w in fair_weight_values:
-                for rob_w in rob_weight_values:
-                    # Remaining weight is assigned to AUC
-                    auc_w = 1.0 - fair_w - rob_w
-                    if auc_w < 0:
-                        continue
+            for w_rga in rga_weight_values:
+                for w_rgr in rgr_weight_values:
+                    for w_rge in rge_weight_values:
+                        w_fair = 1.0 - w_rga - w_rgr - w_rge
 
-                    robustness_metrics = _compute_robustness_metrics(model, X_test, y_test, numeric_cols)
+                        if w_fair < 0:
+                            continue
 
-                    safe_score = (
-                        auc_w * float(roc_auc_score(y_test, y_probs))
-                        + fair_w * fairness_metrics["fairness_aggregate"]
-                        + rob_w * robustness_metrics["robustness_aggregate"]
-                    )
+                        safe_score = (
+                            w_rga * aurga
+                            + w_rgr * rgr_aggregate
+                            + w_rge * aurge
+                            + w_fair * fairness_metrics["fairness_aggregate"]
+                        )
 
-                    rows.append({
-                        "prediction_threshold": pred_thr,
-                        "approval_threshold": approval_thr,
-                        "w_auc": auc_w,
-                        "w_fair": fair_w,
-                        "w_rob": rob_w,
-                        "safe_score": safe_score,
-                        "decision": "APPROVED" if safe_score >= approval_thr else "REJECTED"
-                    })
+                        rows.append({
+                            "prediction_threshold": pred_thr,
+                            "approval_threshold": approval_thr,
+                            "w_rga": w_rga,
+                            "w_rgr": w_rgr,
+                            "w_rge": w_rge,
+                            "w_fair": w_fair,
+                            "safe_score": safe_score,
+                            "decision": "APPROVED" if safe_score >= approval_thr else "REJECTED",
+                        })
 
     df = pd.DataFrame(rows)
 
-    # ------------------------------------------------------------
-    # MAIN EFFECTS
-    # ------------------------------------------------------------
-    # Measure how much SAFE score changes on average when each single factor changes
     effect_summary = []
-    for col in ["prediction_threshold", "approval_threshold", "w_fair", "w_rob"]:
+    for col in ["prediction_threshold", "approval_threshold", "w_rga", "w_rgr", "w_rge", "w_fair"]:
         grouped = df.groupby(col)["safe_score"].mean()
         effect_summary.append({
             "factor": col,
-            "mean_effect_range": float(grouped.max() - grouped.min())
+            "mean_effect_range": float(grouped.max() - grouped.min()),
         })
 
-    effect_df = pd.DataFrame(effect_summary).sort_values("mean_effect_range", ascending=False).reset_index(drop=True)
+    effect_df = pd.DataFrame(effect_summary).sort_values(
+        "mean_effect_range",
+        ascending=False,
+    ).reset_index(drop=True)
 
-    # ------------------------------------------------------------
-    # PAIRWISE INTERACTIONS
-    # ------------------------------------------------------------
-    # Estimate how strongly pairs of factors jointly affect SAFE score
     interaction_rows = []
     pairs = [
         ("prediction_threshold", "approval_threshold"),
+        ("prediction_threshold", "w_rga"),
+        ("prediction_threshold", "w_rgr"),
+        ("prediction_threshold", "w_rge"),
         ("prediction_threshold", "w_fair"),
-        ("prediction_threshold", "w_rob"),
+        ("approval_threshold", "w_rga"),
+        ("approval_threshold", "w_rgr"),
+        ("approval_threshold", "w_rge"),
         ("approval_threshold", "w_fair"),
-        ("approval_threshold", "w_rob"),
-        ("w_fair", "w_rob"),
+        ("w_rga", "w_rgr"),
+        ("w_rga", "w_rge"),
+        ("w_rga", "w_fair"),
+        ("w_rgr", "w_rge"),
+        ("w_rgr", "w_fair"),
+        ("w_rge", "w_fair"),
     ]
 
     for a, b in pairs:
-        pair_table = df.pivot_table(values="safe_score", index=a, columns=b, aggfunc="mean")
+        pair_table = df.pivot_table(
+            values="safe_score",
+            index=a,
+            columns=b,
+            aggfunc="mean",
+        )
+
+        if pair_table.empty:
+            continue
 
         row_means = pair_table.mean(axis=1)
         col_means = pair_table.mean(axis=0)
         grand_mean = pair_table.values.mean()
 
-        # Residual interaction effect beyond independent average effects
         residual = pair_table.copy()
+
         for i in pair_table.index:
             for j in pair_table.columns:
-                residual.loc[i, j] = pair_table.loc[i, j] - row_means.loc[i] - col_means.loc[j] + grand_mean
+                residual.loc[i, j] = (
+                    pair_table.loc[i, j]
+                    - row_means.loc[i]
+                    - col_means.loc[j]
+                    + grand_mean
+                )
 
         interaction_strength = float(np.abs(residual.values).mean())
+
         interaction_rows.append({
             "factor_a": a,
             "factor_b": b,
-            "interaction_strength": interaction_strength
+            "interaction_strength": interaction_strength,
         })
 
-    interaction_df = pd.DataFrame(interaction_rows).sort_values("interaction_strength", ascending=False).reset_index(drop=True)
+    interaction_df = pd.DataFrame(interaction_rows).sort_values(
+        "interaction_strength",
+        ascending=False,
+    ).reset_index(drop=True)
 
     return df, effect_df, interaction_df
 
@@ -794,12 +847,13 @@ def _evaluate_candidate_for_safe_selection(
     X_test,
     y_test,
     group,
-    numeric_cols,
+    rgr_columns,
 ):
     """
-    Compute full core SAFE selection metrics for one candidate model.
+    Compute paper-based SAFE selection metrics for one candidate model.
 
-    This is used for model selection before the final detailed evaluation.
+    Final SAFE score:
+    0.25*AURGA + 0.25*RGR + 0.25*AURGE + 0.25*Fairness
     """
     y_probs = model.predict_proba(X_test)[:, 1]
 
@@ -812,27 +866,59 @@ def _evaluate_candidate_for_safe_selection(
         PRED_THRESHOLD,
     )
 
-    robustness_metrics = _compute_robustness_metrics(
-        model,
-        X_test,
-        y_test,
-        numeric_cols,
+    _, aurga = compute_rga_curve(
+        model=model,
+        X_test=X_test,
+        y_test=y_test,
     )
 
-    baseline_safe = (
-        W_AUC * auc_score
-        + W_FAIR * fairness_metrics["fairness_aggregate"]
-        + W_ROB * robustness_metrics["robustness_aggregate"]
+    _, aurgr_gaussian = compute_rgr_curve(
+        model=model,
+        X_test=X_test,
+        perturbation_type="gaussian",
+        columns=rgr_columns,
+        random_state=RANDOM_STATE,
+    )
+
+    _, aurgr_swapping = compute_rgr_curve(
+        model=model,
+        X_test=X_test,
+        perturbation_type="swapping",
+        columns=rgr_columns,
+        random_state=RANDOM_STATE,
+    )
+
+    rgr_aggregate = float(np.mean([aurgr_gaussian, aurgr_swapping]))
+
+    rge_importance_df = compute_rge_feature_importance(
+        model=model,
+        X_test=X_test,
+    )
+
+    _, aurge = compute_rge_curve(
+        model=model,
+        X_test=X_test,
+        importance_df=rge_importance_df,
+    )
+
+    paper_safe_score = _compute_paper_safe_score(
+        aurga=aurga,
+        rgr_aggregate=rgr_aggregate,
+        aurge=aurge,
+        fairness_aggregate=fairness_metrics["fairness_aggregate"],
     )
 
     return {
         "model": model_name,
         "cv_auc": float(cv_auc),
         "test_auc": float(auc_score),
+        "aurga": float(aurga),
+        "rgr_aggregate": float(rgr_aggregate),
+        "aurge": float(aurge),
         "fairness_aggregate": float(fairness_metrics["fairness_aggregate"]),
-        "robustness_aggregate": float(robustness_metrics["robustness_aggregate"]),
-        "baseline_safe_score": float(baseline_safe),
-        "decision": "APPROVED" if baseline_safe >= APPROVAL_THRESHOLD else "REJECTED",
+        "paper_safe_score": float(paper_safe_score),
+        "baseline_safe_score": float(paper_safe_score),
+        "decision": "APPROVED" if paper_safe_score >= APPROVAL_THRESHOLD else "REJECTED",
     }
 
 
@@ -873,6 +959,8 @@ def _run_safe_model_selection(X_test, y_test, group, numeric_cols, top_k=4):
         model_path = ALL_MODEL_PATHS[model_name]
         candidate_model = joblib.load(model_path)
 
+        rgr_columns = numeric_cols if numeric_cols else list(X_test.columns)
+
         result_row = _evaluate_candidate_for_safe_selection(
             model_name=model_name,
             model=candidate_model,
@@ -880,7 +968,7 @@ def _run_safe_model_selection(X_test, y_test, group, numeric_cols, top_k=4):
             X_test=X_test,
             y_test=y_test,
             group=group,
-            numeric_cols=numeric_cols,
+            rgr_columns=rgr_columns,
         )
 
         rows.append(result_row)
@@ -901,13 +989,13 @@ def _run_safe_model_selection(X_test, y_test, group, numeric_cols, top_k=4):
         f.write(
             "This report compares the top candidate models using core SAFE governance metrics. "
             "The top candidates are first selected by cross-validation AUC, then compared using "
-            "test AUC, fairness aggregate, robustness aggregate, and baseline SAFE score.\n\n"
+            "AURGA, RGR Aggregate, AURGE, Fairness Aggregate, and paper-based SAFE score.\n\n"
         )
 
         f.write("## Selection Rule\n\n")
         f.write(
             "The selected operational governance model is the candidate with the highest "
-            "baseline SAFE score among the top CV-AUC candidates.\n\n"
+            "paper-based SAFE score among the top CV-AUC candidates.\n\n"
         )
 
         f.write(f"## Selected Model\n\n")
@@ -1088,31 +1176,59 @@ def evaluation_and_risk_tool(description: str):
             rgr_columns=rgr_columns,
         )
 
-        # ------------------------------------------------------------
+         # ------------------------------------------------------------
         # ENSEMBLE SAFE AUDITING
         # ------------------------------------------------------------
+        # Legacy auditor outputs are kept only for transparency.
+        # They are NOT used for the final SAFE score anymore.
         ensemble_results = _ensemble_auditor(
             auc_score,
             fairness_metrics,
-            robustness_metrics
+            robustness_metrics,
+        )
+
+        # ------------------------------------------------------------
+        # RGE / AURGE
+        # ------------------------------------------------------------
+        (
+            rge_importance_df,
+            rge_curve_df,
+            aurge,
+            most_important_rge_features,
+            least_important_rge_features,
+        ) = _run_rge_analysis(model, X_test)
+
+        # ------------------------------------------------------------
+        # RGA / AURGA
+        # ------------------------------------------------------------
+        rga_curve_df, aurga = _run_rga_analysis(model, X_test, y_test)
+
+        # ------------------------------------------------------------
+        # FINAL PAPER-BASED SAFE SCORE
+        # ------------------------------------------------------------
+        paper_safe_score = _compute_paper_safe_score(
+            aurga=aurga,
+            rgr_aggregate=rgr_aggregate,
+            aurge=aurge,
+            fairness_aggregate=fairness_metrics["fairness_aggregate"],
+        )
+
+        fixed_rank_safe_part = (
+            W_RGA * aurga
+            + W_RGR * rgr_aggregate
+            + W_RGE * aurge
         )
 
         # ------------------------------------------------------------
         # MITIGATION EXPERIMENT
         # ------------------------------------------------------------
-        # Baseline SAFE score from weighted auditor aggregation
-        baseline_safe = ensemble_results["ensemble_score"]
-
         mitigation_result = _apply_threshold_mitigation_search(
             y_true=y_test,
             y_probs=y_probs,
             group=group,
             base_threshold=PRED_THRESHOLD,
-            auc_score=auc_score,
-            robustness_aggregate=robustness_metrics["robustness_aggregate"],
-            w_auc=W_AUC,
+            fixed_rank_safe_part=fixed_rank_safe_part,
             w_fair=W_FAIR,
-            w_rob=W_ROB,
         )
 
         mitigated_pred = mitigation_result["mitigated_pred"]
@@ -1124,14 +1240,15 @@ def evaluation_and_risk_tool(description: str):
         baseline_mitigation_metrics = mitigation_result["baseline_metrics"]
         mitigated_fairness_metrics = mitigation_result["mitigated_metrics"]
 
-        # Threshold mitigation changes binary decisions, not the model's probability ranking.
-        # So probability-based AUC remains the same as the baseline AUC.
+        # Threshold mitigation changes binary decisions, not probability rankings.
+        # Therefore, probability-based AUC remains unchanged.
         mitigated_auc = auc_score
 
-        mitigated_safe = (
-            W_AUC * mitigated_auc
-            + W_FAIR * mitigated_fairness_metrics["fairness_aggregate"]
-            + W_ROB * robustness_metrics["robustness_aggregate"]
+        mitigated_safe = _compute_paper_safe_score(
+            aurga=aurga,
+            rgr_aggregate=rgr_aggregate,
+            aurge=aurge,
+            fairness_aggregate=mitigated_fairness_metrics["fairness_aggregate"],
         )
 
         mitigation_search_df.to_csv(MITIGATION_SEARCH_CSV_PATH, index=False)
@@ -1140,19 +1257,19 @@ def evaluation_and_risk_tool(description: str):
 
         with open(MITIGATION_REPORT_PATH, "w", encoding="utf-8") as f:
             f.write("# Mitigation Experiment Report\n\n")
-            f.write("This report evaluates group-aware threshold mitigation.\n\n")
+            f.write("This report evaluates group-aware threshold mitigation using the final paper-based SAFE score.\n\n")
 
             f.write("## Method\n")
             f.write(
                 "The experiment first identifies the group with the lowest baseline "
                 "positive prediction rate. It then evaluates several threshold reductions "
                 "for that group while keeping the other group thresholds unchanged. "
-                "The selected mitigation is the candidate with the highest SAFE score.\n\n"
+                "The selected mitigation is the candidate with the highest paper-based SAFE score.\n\n"
             )
 
             f.write("## Selected Mitigation\n")
             f.write(f"- Disadvantaged group: {disadvantaged_group}\n")
-            f.write(f"- Base threshold from configuration: {PRED_THRESHOLD:.4f}\n")            
+            f.write(f"- Base threshold from configuration: {PRED_THRESHOLD:.4f}\n")
             f.write(
                 f"- Selected adjusted threshold: "
                 f"{best_mitigation_row['adjusted_threshold_for_disadvantaged_group']:.4f}\n"
@@ -1160,10 +1277,13 @@ def evaluation_and_risk_tool(description: str):
             f.write(f"- Selected delta: {best_mitigation_row['delta']:.4f}\n")
             f.write(f"- Baseline AUC: {auc_score:.4f}\n")
             f.write(f"- Mitigated AUC: {mitigated_auc:.4f}\n")
+            f.write(f"- AURGA: {aurga:.4f}\n")
+            f.write(f"- RGR Aggregate: {rgr_aggregate:.4f}\n")
+            f.write(f"- AURGE: {aurge:.4f}\n")
             f.write(f"- Baseline fairness aggregate: {fairness_metrics['fairness_aggregate']:.4f}\n")
             f.write(f"- Mitigated fairness aggregate: {mitigated_fairness_metrics['fairness_aggregate']:.4f}\n")
-            f.write(f"- Baseline SAFE score: {baseline_safe:.4f}\n")
-            f.write(f"- Mitigated SAFE score: {mitigated_safe:.4f}\n\n")
+            f.write(f"- Baseline paper-based SAFE score: {paper_safe_score:.4f}\n")
+            f.write(f"- Mitigated paper-based SAFE score: {mitigated_safe:.4f}\n\n")
 
             f.write("## Baseline Fairness Components\n")
             f.write(f"- SPD gap: {fairness_metrics['spd_gap']:.4f}\n")
@@ -1193,33 +1313,33 @@ def evaluation_and_risk_tool(description: str):
             f.write(f"- Threshold search CSV: {MITIGATION_SEARCH_CSV_PATH.name}\n")
             f.write(f"- Baseline group table CSV: {MITIGATION_GROUP_BEFORE_CSV_PATH.name}\n")
             f.write(f"- Mitigated group table CSV: {MITIGATION_GROUP_AFTER_CSV_PATH.name}\n")
+
         # ------------------------------------------------------------
         # SENSITIVITY + INTERACTION ANALYSIS
         # ------------------------------------------------------------
-        sensitivity_df = _sensitivity_analysis(model, X_test, y_test, config, numeric_cols)
-        interaction_grid_df, effect_df, interaction_df = _interaction_analysis(
-            model, X_test, y_test, config, numeric_cols
+        sensitivity_df = _sensitivity_analysis(
+            model=model,
+            X_test=X_test,
+            y_test=y_test,
+            config=config,
+            aurga=aurga,
+            rgr_aggregate=rgr_aggregate,
+            aurge=aurge,
         )
 
-        # Best scenario from sensitivity analysis
+        interaction_grid_df, effect_df, interaction_df = _interaction_analysis(
+            model=model,
+            X_test=X_test,
+            y_test=y_test,
+            aurga=aurga,
+            rgr_aggregate=rgr_aggregate,
+            aurge=aurge,
+        )
+
         best_scenario = sensitivity_df.iloc[0]
 
-        # Best non-base scenario for comparison
         best_non_base_df = sensitivity_df[sensitivity_df["scenario"] != "base"]
         best_non_base = best_non_base_df.iloc[0] if not best_non_base_df.empty else best_scenario
-
-        # Rank-based explainability: RGE / AURGE
-        (
-            rge_importance_df,
-            rge_curve_df,
-            aurge,
-            most_important_rge_features,
-            least_important_rge_features,
-        ) = _run_rge_analysis(model, X_test)
-
-        # Rank-based accuracy: RGA / AURGA
-        rga_curve_df, aurga = _run_rga_analysis(model, X_test, y_test)
-
         # ------------------------------------------------------------
         # RGE VS SHAP COMPARISON
         # ------------------------------------------------------------
@@ -1334,7 +1454,7 @@ def evaluation_and_risk_tool(description: str):
 - **Calibration Curve Plot**: {CALIBRATION_CURVE_PLOT_PATH.name}
 - **Fairness Aggregate**: {fairness_metrics['fairness_aggregate']:.4f}
 - **Robustness Aggregate**: {robustness_metrics['robustness_aggregate']:.4f}
-- **Baseline SAFE Score**: {baseline_safe:.4f}
+- **Baseline SAFE Score**: {paper_safe_score:.4f}
 - **Selected Operational Model**: {selected_model_name}
 - **SAFE Model Selection File**: {SAFE_MODEL_SELECTION_CSV_PATH.name}
 - **SAFE Model Selection Plot**: {SAFE_MODEL_SELECTION_PLOT_PATH.name}
@@ -1386,14 +1506,14 @@ def evaluation_and_risk_tool(description: str):
 - Data source: {config['data_source']}
 - Prediction threshold: {config['prediction_threshold']}
 - Approval threshold: {config['approval_threshold']}
-- Weights: AUC={config['weights']['auc']:.3f}, Fairness={config['weights']['fairness']:.3f}, Robustness={config['weights']['robustness']:.3f}
+- Weights: RGA={config['weights']['rga']:.3f}, RGR={config['weights']['rgr']:.3f}, RGE={config['weights']['rge']:.3f}, Fairness={config['weights']['fairness']:.3f}
 - Sensitive feature: {config['sensitive_feature']}
 - Drop sensitive from model: {config['drop_sensitive_from_model']}
 - Decision rule: {config['decision_rule']}
 
 ## SAFE Model Selection
 
-The system first trained multiple candidate models and selected the top candidates by cross-validation AUC. It then computed core SAFE governance metrics for the top candidates, including test AUC, fairness aggregate, robustness aggregate, and baseline SAFE score.
+The system first trained multiple candidate models and selected the top candidates by cross-validation AUC. It then computed paper-based SAFE governance metrics for the top candidates, including AURGA, RGR Aggregate, AURGE, Fairness Aggregate, and paper-based SAFE score.
 
 Selected operational governance model: {selected_model_name}
 
@@ -1464,8 +1584,9 @@ Interpretation:
 Individual auditor scores:
 {ensemble_results["auditor_table"].to_markdown(index=False)}
 
-- Final ensemble SAFE score: {baseline_safe:.4f}
-- Ensemble rule: weighted aggregation of independent performance, fairness, and robustness auditors.
+- Legacy auditor table is reported for transparency only.
+- Final paper-based SAFE score: {paper_safe_score:.4f}
+- Final SAFE rule: W_RGA*AURGA + W_RGR*RGR_Aggregate + W_RGE*AURGE + W_FAIR*Fairness_Aggregate.
 
 ## Mitigation Experiment
 - Mitigation type: group-aware threshold search
@@ -1475,8 +1596,8 @@ Individual auditor scores:
 - Selected adjusted threshold: {best_mitigation_row['adjusted_threshold_for_disadvantaged_group']:.4f}
 - Baseline fairness aggregate: {fairness_metrics['fairness_aggregate']:.4f}
 - Mitigated fairness aggregate: {mitigated_fairness_metrics['fairness_aggregate']:.4f}
-- Baseline SAFE score: {baseline_safe:.4f}
-- Mitigated SAFE score: {mitigated_safe:.4f}
+- Baseline paper-based SAFE score: {paper_safe_score:.4f}
+- Mitigated paper-based SAFE score: {mitigated_safe:.4f}
 - Mitigation report: {MITIGATION_REPORT_PATH.name}
 - Mitigation threshold search CSV: {MITIGATION_SEARCH_CSV_PATH.name}
 - Baseline group table CSV: {MITIGATION_GROUP_BEFORE_CSV_PATH.name}
@@ -1498,7 +1619,7 @@ Top scenarios by SAFE score:
 {sensitivity_df.head(8).to_markdown(index=False)}
 
 ## Interaction / Effects Summary
-- Baseline SAFE score: {baseline_safe:.4f}
+- Baseline paper-based SAFE score: {paper_safe_score:.4f}
 - Best scenario from sensitivity analysis: {best_scenario['scenario']}
 - Best scenario SAFE score: {best_scenario['safe_score']:.4f}
 - Strongest observed effect beyond baseline: {best_non_base['scenario']}

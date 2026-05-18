@@ -9,14 +9,14 @@ This report summarizes the implemented SAFE AI paper metrics across multiple mod
 - Compliance Score using Arithmetic Mean, Geometric Mean, RMS, and TOPSIS
 
 ## Current Governance Model Metrics
-- AURGA: 0.7018
-- AURGR Gaussian: 0.9943
-- AURGR Swapping: 0.8691
-- AURGE: 0.9725
+- AURGA: 0.7095
+- AURGR Gaussian: 0.9916
+- AURGR Swapping: 0.8645
+- AURGE: 0.9712
 
 ## SHAP vs RGE
 - SHAP comparison status: completed
-- Spearman correlation: 0.8902696985721839
+- Spearman correlation: 0.908143839238498
 
 ## Model Metrics Comparison
 

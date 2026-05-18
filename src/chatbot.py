@@ -38,6 +38,7 @@ SAMPLE_QUESTIONS = [
     "How robust is the model to noise?",
     "What does the model card say about training?",
     "Does the report mention calibration?",
+    "How is the final SAFE score calculated?",
 ]
 
 
@@ -153,6 +154,9 @@ def build_chatbot_context():
         "auc": _extract_markdown_metric(evaluation_report, "Accuracy (AUC)"),
         "fairness_aggregate": _extract_markdown_metric(evaluation_report, "Fairness Aggregate"),
         "robustness_aggregate": _extract_markdown_metric(evaluation_report, "Robustness Aggregate"),
+        "aurga": _extract_markdown_metric(evaluation_report, "AURGA"),
+        "rgr_aggregate": _extract_markdown_metric(evaluation_report, "RGR Aggregate"),
+        "aurge": _extract_markdown_metric(evaluation_report, "AURGE"),
 
         "markdown_artifacts": markdown_artifacts,
         "csv_artifacts": csv_artifacts,
@@ -228,10 +232,14 @@ def _expand_query_terms(query, terms):
             "weakest",
             "fairness",
             "aggregate",
-            "auc",
-            "robustness",
+            "aurga",
+            "rgr",
+            "aurge",
+            "rank",
+            "rank-based",
             "decision",
             "safe",
+            "score",
         ])
 
     if any(x in q for x in ["compliance", "topsis", "best model", "best compliance"]):
@@ -302,6 +310,13 @@ def _expand_query_terms(query, terms):
             "score",
             "threshold",
             "fairness",
+            "aurga",
+            "rgr",
+            "aurge",
+            "paper-based",
+            "rank-based",
+            "baseline safe score",
+            "mitigated safe score",
         ])
 
     return list(expanded)

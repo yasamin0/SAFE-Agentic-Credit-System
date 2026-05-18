@@ -33,18 +33,22 @@ APPROVAL_THRESHOLD = float(os.getenv("APPROVAL_THRESHOLD", "0.75"))
 # SAFE score weights
 # -----------------------------
 
-W_AUC = float(os.getenv("W_AUC", "0.4"))
-W_FAIR = float(os.getenv("W_FAIR", "0.4"))
-W_ROB = float(os.getenv("W_ROB", "0.2"))
+# Equal weights requested for the final SAFE score:
+# SAFE = 0.25*RGA + 0.25*RGR + 0.25*RGE + 0.25*Fairness
+W_RGA = float(os.getenv("W_RGA", "0.25"))
+W_RGR = float(os.getenv("W_RGR", "0.25"))
+W_RGE = float(os.getenv("W_RGE", "0.25"))
+W_FAIR = float(os.getenv("W_FAIR", "0.25"))
 
 # Normalize weights to keep the SAFE score well-defined.
-w_sum = W_AUC + W_FAIR + W_ROB
+w_sum = W_RGA + W_RGR + W_RGE + W_FAIR
 if w_sum <= 0:
     raise ValueError("Weights must sum to > 0")
 
-W_AUC = W_AUC / w_sum
+W_RGA = W_RGA / w_sum
+W_RGR = W_RGR / w_sum
+W_RGE = W_RGE / w_sum
 W_FAIR = W_FAIR / w_sum
-W_ROB = W_ROB / w_sum
 
 
 # -----------------------------
@@ -86,9 +90,10 @@ def current_config():
         "prediction_threshold": PRED_THRESHOLD,
         "approval_threshold": APPROVAL_THRESHOLD,
         "weights": {
-            "auc": W_AUC,
+            "rga": W_RGA,
+            "rgr": W_RGR,
+            "rge": W_RGE,
             "fairness": W_FAIR,
-            "robustness": W_ROB,
         },
         "sensitive_feature": SENSITIVE_FEATURE,
         "alternative_sensitive_features": ALT_SENSITIVE_FEATURES,
@@ -101,6 +106,7 @@ def current_config():
         },
         "decision_rule": (
             "APPROVED if SAFE_SCORE >= APPROVAL_THRESHOLD else REJECTED, "
-            "where SAFE_SCORE = W_AUC*AUC + W_FAIR*FAIRNESS_AGG + W_ROB*ROBUSTNESS_AGG"
+            "where SAFE_SCORE = W_RGA*AURGA + W_RGR*RGR_AGG + W_RGE*AURGE + W_FAIR*FAIRNESS_AGG"
         ),
     }
+

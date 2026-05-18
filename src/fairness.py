@@ -118,11 +118,8 @@ def _apply_threshold_mitigation_search(
     y_probs,
     group,
     base_threshold,
-    auc_score,
-    robustness_aggregate,
-    w_auc,
+    fixed_rank_safe_part,
     w_fair,
-    w_rob,
     deltas=None,
 ):
     """
@@ -177,9 +174,8 @@ def _apply_threshold_mitigation_search(
         # Threshold mitigation changes binary decisions, not probability ranking.
         # Therefore, probability-based AUC remains the baseline AUC.
         safe_score = (
-            w_auc * auc_score
+            fixed_rank_safe_part
             + w_fair * mitigated_metrics["fairness_aggregate"]
-            + w_rob * robustness_aggregate
         )
 
         rows.append({
@@ -187,8 +183,7 @@ def _apply_threshold_mitigation_search(
             "base_threshold": float(base_threshold),
             "adjusted_threshold_for_disadvantaged_group": float(adjusted_threshold),
             "disadvantaged_group": disadvantaged_group,
-            "auc_probability_based": float(auc_score),
-            "fairness_aggregate": float(mitigated_metrics["fairness_aggregate"]),
+            "ranking_metrics_status": "unchanged_by_threshold_mitigation",            "fairness_aggregate": float(mitigated_metrics["fairness_aggregate"]),
             "spd_gap": float(mitigated_metrics["spd_gap"]),
             "eod_gap": float(mitigated_metrics["eod_gap"]),
             "aod_gap": float(mitigated_metrics["aod_gap"]),
