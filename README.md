@@ -15,7 +15,7 @@ The project is evaluated on the German Credit dataset and is designed as a repro
 The pipeline is organized into five main stages:
 
 1. **Data Agent**  
-   Loads the German Credit dataset, performs EDA, outlier analysis, preprocessing, train-test splitting, feature encoding, scaling, sensitive-feature extraction, and Data Card generation.
+   Loads the German Credit dataset, performs exploratory data analysis, outlier analysis, preprocessing, train-test splitting, feature encoding, scaling, sensitive-feature extraction, and Data Card generation.
 
 2. **Modeling Agent**  
    Trains candidate models including Logistic Regression, Random Forest, XGBoost, Voting Ensemble, Stacking Ensemble, and a Random Baseline.
@@ -96,7 +96,7 @@ SAFE-Agentic-Credit-System/
 Clone the repository:
 
 ```bash
-git clone https://github.com/Meisam7/SAFE-Agentic-Credit-System.git
+git clone https://github.com/yasamin0/SAFE-Agentic-Credit-System.git
 cd SAFE-Agentic-Credit-System
 ```
 
@@ -116,11 +116,13 @@ Activate it:
 source .venv/bin/activate
 ```
 
-Install dependencies:
+Install the main dependencies manually:
 
 ```bash
-pip install -r requirements.txt
+pip install pandas numpy scikit-learn matplotlib shap xgboost joblib python-dotenv crewai
 ```
+
+Depending on your local environment, you may also need to install any additional packages imported by the project modules.
 
 ## How to Run
 
@@ -154,13 +156,11 @@ The system generates:
 
 This project is inspired by the SAFE AI and Rank Graduation Box framework:
 
-```text
-Babaei, G., Giudici, P., & Raffinetti, E. (2024). A Rank Graduation Box for SAFE AI. Expert Systems with Applications, 125239.
+- [Babaei, G., Giudici, P., & Raffinetti, E. (2025). A Rank Graduation Box for SAFE AI. Expert Systems with Applications, 259, 125239.](https://www.sciencedirect.com/science/article/pii/S0957417424021067)
 
-Giudici, P., & Raffinetti, E. (2024). RGA: a unified measure of predictive accuracy. Advances in Data Analysis and Classification.
+- [Giudici, P., & Raffinetti, E. (2025). RGA: a unified measure of predictive accuracy. Advances in Data Analysis and Classification, 19, 67–93.](https://link.springer.com/article/10.1007/s11634-023-00574-2)
 
-Raffinetti, E. (2023). A rank graduation accuracy measure to mitigate artificial intelligence risks. Quality & Quantity, 57(Suppl 2), 131–150.
-```
+- [Raffinetti, E. (2023). A Rank Graduation Accuracy measure to mitigate Artificial Intelligence risks. Quality & Quantity, 57(Suppl 2), 131–150.](https://link.springer.com/article/10.1007/s11135-023-01613-y)
 
 ## Authors
 
