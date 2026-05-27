@@ -165,5 +165,5 @@ This project is inspired by the SAFE AI and Rank Graduation Box framework:
 ## Authors
 
 - [Yasamin Hosseinizadeh Sani](https://www.linkedin.com/in/yasamin-hosseinzadeh-sani-4b7429232/), University of Pavia
-- [Golnoosh Babaei](https://www.linkedin.com/in/golnoosh-babaei-990077187/), University of Pavia
-- [Paolo Giudici](https://www.linkedin.com/in/paolo-giudici-60028a/), University of Pavia
+- [Golnoosh Babaei](https://scholar.google.com/citations?user=KRdJkDMAAAAJ&hl=en&oi=ao), University of Pavia
+- [Paolo Giudici](https://scholar.google.com/citations?user=ogeVB1kAAAAJ&hl=en), University of Pavia
