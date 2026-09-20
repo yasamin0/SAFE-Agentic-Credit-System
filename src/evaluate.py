@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from crewai.tools import tool
 
 from sklearn.calibration import calibration_curve
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
     brier_score_loss,
@@ -27,6 +28,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.exceptions import ConvergenceWarning
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
+from src.statistical_tests import (
+    bootstrap_auc_ci,
+    build_statistical_summary,
+    cramervonmises_outcome_separation_test,
+)
 
 from src.config import (
     APPROVAL_THRESHOLD,
@@ -45,6 +52,7 @@ from src.fairness import (
     _apply_threshold_mitigation_search,
     _compute_fairness_from_predictions,
     _compute_fairness_metrics,
+    _fairness_weight_sensitivity,
 )
 
 from src.paths import (
@@ -104,12 +112,21 @@ from src.paths import (
     SAFE_MODEL_SELECTION_PLOT_PATH,
     SAFE_MODEL_SELECTION_REPORT_PATH,
 
+    CROSSVAL_SAFE_FOLDS_CSV_PATH,
+    CROSSVAL_SAFE_SUMMARY_CSV_PATH,
+
 )
 
 from src.utils import _read_target_series, _safe_mean
-
+from src.crossval_evaluation import (
+    run_five_fold_safe_evaluation,
+)
 from src.rga import compute_rga_curve, save_rga_plot
-from src.rgr import compute_rgr_curve, save_rgr_plot
+from src.rgr import (
+    compute_rgr_curve,
+    compute_reference_rgr,
+    save_rgr_plot,
+)
 from src.rge import (
     compute_rge_feature_importance,
     compute_rge_curve,
@@ -617,6 +634,40 @@ def _interaction_analysis(
 
     return df, effect_df, interaction_df
 
+def _compute_calibration_intercept_slope(y_true, y_probs):
+    """
+    Estimate calibration intercept and slope.
+
+    Ideal calibration:
+    intercept = 0
+    slope = 1
+    """
+    y_true = np.asarray(y_true)
+    y_probs = np.asarray(y_probs)
+
+    eps = 1e-6
+    probs = np.clip(y_probs, eps, 1.0 - eps)
+
+    logit_probs = np.log(
+        probs / (1.0 - probs)
+    ).reshape(-1, 1)
+
+    calibration_model = LogisticRegression(
+        penalty=None,
+        solver="lbfgs",
+        max_iter=2000,
+    )
+
+    calibration_model.fit(
+        logit_probs,
+        y_true,
+    )
+
+    intercept = float(calibration_model.intercept_[0])
+    slope = float(calibration_model.coef_[0][0])
+
+    return intercept, slope
+
 def _compute_classification_and_calibration_metrics(y_true, y_probs, threshold):
     """
     Compute additional classification and calibration metrics.
@@ -722,12 +773,19 @@ def _run_rgr_analysis(model, X_test, rgr_columns):
         title="RGR Curve — Percentile Swapping Perturbation",
     )
 
-    rgr_aggregate = float(np.mean([aurgr_gaussian, aurgr_swapping]))
+    reference_rgr = compute_reference_rgr(
+        model=model,
+        X_test=X_test,
+        intensity=0.5,
+        random_state=RANDOM_STATE,
+    )
+    rgr_aggregate = float(reference_rgr)
 
     with open(RGR_REPORT_PATH, "w", encoding="utf-8") as f:
         f.write("# Rank Graduation Robustness Report\n\n")
         f.write("RGR measures ranking stability under increasing perturbation intensity.\n\n")
         f.write("## Results\n")
+        f.write(f"- Reference-aligned RGR (prediction Gaussian noise, 0.5 sigma): {reference_rgr:.4f}\n")
         f.write(f"- AURGR Gaussian Noise: {aurgr_gaussian:.4f}\n")
         f.write(f"- AURGR Percentile Swapping: {aurgr_swapping:.4f}\n")
         f.write(f"- RGR Aggregate: {rgr_aggregate:.4f}\n\n")
@@ -858,7 +916,6 @@ def _evaluate_candidate_for_safe_selection(
     y_probs = model.predict_proba(X_test)[:, 1]
 
     auc_score = float(roc_auc_score(y_test, y_probs))
-
     fairness_metrics, _, _ = _compute_fairness_metrics(
         y_test,
         y_probs,
@@ -872,23 +929,12 @@ def _evaluate_candidate_for_safe_selection(
         y_test=y_test,
     )
 
-    _, aurgr_gaussian = compute_rgr_curve(
+    rgr_aggregate = compute_reference_rgr(
         model=model,
         X_test=X_test,
-        perturbation_type="gaussian",
-        columns=rgr_columns,
+        intensity=0.5,
         random_state=RANDOM_STATE,
     )
-
-    _, aurgr_swapping = compute_rgr_curve(
-        model=model,
-        X_test=X_test,
-        perturbation_type="swapping",
-        columns=rgr_columns,
-        random_state=RANDOM_STATE,
-    )
-
-    rgr_aggregate = float(np.mean([aurgr_gaussian, aurgr_swapping]))
 
     rge_importance_df = compute_rge_feature_importance(
         model=model,
@@ -1123,6 +1169,24 @@ def evaluation_and_risk_tool(description: str):
             numeric_cols=numeric_cols,
             top_k=4,
         )
+        raw_df = pd.read_csv(RAW_DATA_PATH)
+
+        crossval_fold_df, crossval_summary_df = (
+            run_five_fold_safe_evaluation(
+                model=model,
+                raw_df=raw_df,
+            )
+        )
+
+        crossval_fold_df.to_csv(
+            CROSSVAL_SAFE_FOLDS_CSV_PATH,
+            index=False,
+        )
+
+        crossval_summary_df.to_csv(
+            CROSSVAL_SAFE_SUMMARY_CSV_PATH,
+            index=False,
+        )
 
         top_models_shap_rge_summary_df, top_models_shap_rge_comparison_df = (
             _run_top_models_shap_rge_comparison(
@@ -1140,12 +1204,33 @@ def evaluation_and_risk_tool(description: str):
 
         # Baseline predictive performance for selected model
         auc_score = float(roc_auc_score(y_test, y_probs))
+        auc_ci = bootstrap_auc_ci(
+            y_true=y_test,
+            y_probs=y_probs,
+            n_bootstrap=2000,
+            confidence_level=0.95,
+            random_state=RANDOM_STATE,
+        )
+
+        cvm_result = cramervonmises_outcome_separation_test(
+            y_true=y_test,
+            y_probs=y_probs,
+        )
+
+        statistical_summary_df = build_statistical_summary(
+            auc_ci=auc_ci,
+            cvm_result=cvm_result,
+        )
 
         # Additional classification and calibration metrics.
         classification_metrics, confusion_matrix_df, calibration_df = _compute_classification_and_calibration_metrics(
             y_true=y_test,
             y_probs=y_probs,
             threshold=PRED_THRESHOLD,
+        )
+        calibration_intercept, calibration_slope = _compute_calibration_intercept_slope(
+            y_true=y_test,
+            y_probs=y_probs,
         )
 
         _save_classification_artifacts(
@@ -1158,6 +1243,9 @@ def evaluation_and_risk_tool(description: str):
         # ------------------------------------------------------------
         fairness_metrics, group_table, _ = _compute_fairness_metrics(
             y_test, y_probs, group, PRED_THRESHOLD
+        )
+        fairness_weight_sensitivity_df = _fairness_weight_sensitivity(
+            fairness_metrics
         )
 
         # ------------------------------------------------------------
@@ -1440,19 +1528,47 @@ def evaluation_and_risk_tool(description: str):
         # ------------------------------------------------------------
         # WRITE EVALUATION REPORT
         # ------------------------------------------------------------
+        cvm_statistic_text = (
+            f"{cvm_result['statistic']:.6f}"
+            if cvm_result is not None
+            else "N/A"
+        )
+
+        cvm_p_value_text = (
+            f"{cvm_result['p_value']:.3e}"
+            if cvm_result is not None
+            else "N/A"
+        )
+
+        cvm_significant_text = (
+            str(cvm_result["significant_0_05"])
+            if cvm_result is not None
+            else "N/A"
+        )
         report_content = f"""### Detailed SAFE AI Evaluation Report
 - **Accuracy (AUC)**: {auc_score:.4f}
+- **AUC 95% CI Lower**: {auc_ci['ci_lower']:.4f}
+- **AUC 95% CI Upper**: {auc_ci['ci_upper']:.4f}
+- **AUC Bootstrap SD**: {auc_ci['bootstrap_std']:.4f}
+- **5-Fold SAFE Evaluation File**: {CROSSVAL_SAFE_FOLDS_CSV_PATH.name}
+- **5-Fold SAFE Summary File**: {CROSSVAL_SAFE_SUMMARY_CSV_PATH.name}
+- **Cramér-von Mises Statistic**: {cvm_statistic_text}
+- **Cramér-von Mises p-value**: {cvm_p_value_text}
+- **Cramér-von Mises Significant at 0.05**: {cvm_significant_text}
 - **PR-AUC**: {classification_metrics['pr_auc']:.4f}
 - **Precision**: {classification_metrics['precision']:.4f}
 - **Recall**: {classification_metrics['recall']:.4f}
 - **F1 Score**: {classification_metrics['f1']:.4f}
 - **Brier Score**: {classification_metrics['brier_score']:.4f}
+- **Calibration Intercept**: {calibration_intercept:.4f}
+- **Calibration Slope**: {calibration_slope:.4f}
 - **Classification Metrics File**: {CLASSIFICATION_METRICS_CSV_PATH.name}
 - **Confusion Matrix File**: {CONFUSION_MATRIX_CSV_PATH.name}
 - **Calibration Curve File**: {CALIBRATION_CURVE_CSV_PATH.name}
 - **Confusion Matrix Plot**: {CONFUSION_MATRIX_PLOT_PATH.name}
 - **Calibration Curve Plot**: {CALIBRATION_CURVE_PLOT_PATH.name}
 - **Fairness Aggregate**: {fairness_metrics['fairness_aggregate']:.4f}
+- **Fairness Weight Sensitivity Range**: {fairness_weight_sensitivity_df['fairness_aggregate'].min():.4f} - {fairness_weight_sensitivity_df['fairness_aggregate'].max():.4f}
 - **Robustness Aggregate**: {robustness_metrics['robustness_aggregate']:.4f}
 - **Baseline SAFE Score**: {paper_safe_score:.4f}
 - **Selected Operational Model**: {selected_model_name}
@@ -1536,8 +1652,50 @@ Top-model SHAP-RGE artifacts:
 - Comparison CSV: {TOP_MODELS_SHAP_RGE_COMPARISON_CSV_PATH.name}
 - Report: {TOP_MODELS_SHAP_RGE_REPORT_PATH.name}
 
-## Accuracy
+## Accuracy and Statistical Uncertainty
 - AUC: {auc_score:.4f}
+- Bootstrap 95% CI: [{auc_ci['ci_lower']:.4f}, {auc_ci['ci_upper']:.4f}]
+- Bootstrap SD: {auc_ci['bootstrap_std']:.4f}
+- Valid bootstrap samples: {auc_ci['n_bootstrap_valid']}
+
+## Five-Fold Cross-Validation of SAFE Metrics
+
+To assess the stability of the proposed governance framework, the selected model
+was re-fitted and evaluated using stratified 5-fold cross-validation. Preprocessing
+was fitted independently within each training fold to avoid information leakage.
+
+Fold-level results:
+
+{crossval_fold_df.to_markdown(index=False)}
+
+Summary across five folds:
+
+{crossval_summary_df.to_markdown(index=False)}
+
+Values in the `mean_sd` column are reported as mean (standard deviation).
+The 95% confidence intervals are based on the fold-level estimates.
+
+Cross-validation artifacts:
+- Fold-level results: {CROSSVAL_SAFE_FOLDS_CSV_PATH.name}
+- Summary results: {CROSSVAL_SAFE_SUMMARY_CSV_PATH.name}
+
+## Statistical Validation
+- Evaluated model: {selected_model_name}
+- Cramér-von Mises statistic: {cvm_statistic_text}
+- Cramér-von Mises p-value: {cvm_p_value_text}
+- Significant at alpha=0.05: {cvm_significant_text}
+
+Interpretation:
+The bootstrap interval quantifies uncertainty in ROC-AUC.
+The two-sample Cramér-von Mises test evaluates whether the empirical
+predicted-probability distributions differ between observations with
+CreditRisk=0 and CreditRisk=1.
+
+The null hypothesis states that the two outcome groups have the same
+predicted-probability distribution. A p-value below 0.05 provides evidence
+of statistically significant distributional separation between the two
+observed outcome classes. This test is interpreted as a distributional
+separation test and not as a calibration test.
 
 ## Classification Metrics
 - PR-AUC: {classification_metrics['pr_auc']:.4f}
@@ -1545,6 +1703,8 @@ Top-model SHAP-RGE artifacts:
 - Recall: {classification_metrics['recall']:.4f}
 - F1 Score: {classification_metrics['f1']:.4f}
 - Brier Score: {classification_metrics['brier_score']:.4f}
+- Calibration Intercept: {calibration_intercept:.4f}
+- Calibration Slope: {calibration_slope:.4f}
 
 Confusion matrix:
 {confusion_matrix_df.to_markdown()}
@@ -1559,6 +1719,14 @@ Calibration curve data:
 - Disparate impact ratio: {fairness_metrics['dir_ratio']:.4f}
 - Fairness aggregate: {fairness_metrics['fairness_aggregate']:.4f}
 
+### Fairness Weight Sensitivity
+
+The baseline Fairness Aggregate uses equal weights across SPD, EOD, AOD, and DIR.
+Alternative weighting schemes are evaluated to assess whether the fairness conclusion
+is sensitive to the aggregation policy.
+
+{fairness_weight_sensitivity_df.to_markdown(index=False)}
+
 ## Robustness Aggregation
 - Noise AUC ratio: {robustness_metrics['noise_auc_ratio']:.4f}
 - Dropout AUC ratio: {robustness_metrics['dropout_auc_ratio']:.4f}
@@ -1568,17 +1736,17 @@ Calibration curve data:
 ## Rank-Based Robustness: RGR / AURGR
 - AURGR Gaussian Noise: {aurgr_gaussian:.4f}
 - AURGR Percentile Swapping: {aurgr_swapping:.4f}
-- RGR Aggregate: {rgr_aggregate:.4f}
+- Reference-aligned RGR (prediction-space Gaussian noise, 0.5 sigma): {rgr_aggregate:.4f}
 - Gaussian RGR curve CSV: {RGR_GAUSSIAN_CSV_PATH.name}
 - Percentile Swapping RGR curve CSV: {RGR_SWAPPING_CSV_PATH.name}
 - Gaussian RGR plot: {RGR_GAUSSIAN_PLOT_PATH.name}
 - Percentile Swapping RGR plot: {RGR_SWAPPING_PLOT_PATH.name}
 
 Interpretation:
-- RGR measures whether the ranking of model predictions remains stable after perturbing the input data.
-- A higher AURGR means the model is more robust across increasing perturbation intensities.
-- Gaussian noise tests sensitivity to continuous random noise.
-- Percentile swapping tests sensitivity to stronger distributional perturbations.
+- The primary reference-aligned RGR measures the stability of prediction rankings after Gaussian noise is added directly to the predicted scores.
+- The Gaussian perturbation standard deviation is fixed at 0.5 times the standard deviation of the original predicted scores, following the reference methodology.
+- Higher RGR values indicate greater ranking stability under this prediction-space perturbation.
+- Input-feature Gaussian noise and percentile swapping are retained as supplementary robustness stress tests and are not used as the primary RGR component of the SAFE score.
 
 ## Ensemble Auditing
 Individual auditor scores:

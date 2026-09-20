@@ -43,6 +43,67 @@ def _rank_graduation_similarity(reference_scores, comparison_scores):
 
     return float(np.clip(numerator / denominator, 0.0, 1.0))
 
+def apply_prediction_gaussian_noise(
+    predictions,
+    intensity=0.5,
+    random_state=42,
+):
+    """
+    Apply Gaussian perturbation directly to model predictions.
+
+    This follows the reference RGR experiment:
+        y_hat_perturbed = y_hat + epsilon
+        epsilon ~ N(0, (intensity * std(y_hat))^2)
+
+    The reference paper uses intensity = 0.5.
+    """
+    predictions = np.asarray(predictions, dtype=float)
+
+    if intensity <= 0:
+        return predictions.copy()
+
+    pred_std = float(np.std(predictions, ddof=1))
+
+    if np.isclose(pred_std, 0.0):
+        return predictions.copy()
+
+    rng = np.random.default_rng(random_state)
+
+    noise = rng.normal(
+        loc=0.0,
+        scale=float(intensity) * pred_std,
+        size=len(predictions),
+    )
+
+    return predictions + noise
+
+
+def compute_reference_rgr(
+    model,
+    X_test,
+    intensity=0.5,
+    random_state=42,
+):
+    """
+    Compute paper-aligned RGR by perturbing the predictions directly.
+
+    Reference setting:
+        intensity = 0.5
+    """
+    base_scores = model.predict_proba(X_test)[:, 1]
+
+    perturbed_scores = apply_prediction_gaussian_noise(
+        predictions=base_scores,
+        intensity=intensity,
+        random_state=random_state,
+    )
+
+    rgr = _rank_graduation_similarity(
+        reference_scores=base_scores,
+        comparison_scores=perturbed_scores,
+    )
+
+    return float(rgr)
 
 def apply_gaussian_noise(X, intensity, columns, random_state=42):
     """Add Gaussian noise to selected columns."""

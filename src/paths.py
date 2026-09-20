@@ -28,6 +28,14 @@ FIGURES_DIR = REPORTS_DIR / "figures"
 
 RAW_DATA_PATH = RAW_DIR / "raw_credit_data.csv"
 
+DATASET_DIR = BASE_DIR / "Dataset"
+
+TAIWAN_DATA_PATH = (
+    DATASET_DIR
+    / "Taiwan Credit"
+    / "default of credit card clients.xls"
+)
+
 TRAIN_FEATURES_PATH = PROCESSED_DIR / "clean_train_features.csv"
 TRAIN_TARGET_PATH = PROCESSED_DIR / "clean_train_target.csv"
 TEST_FEATURES_PATH = PROCESSED_DIR / "clean_test_features.csv"
@@ -80,6 +88,33 @@ EVALUATION_REPORT_PATH = REPORTS_DIR / "evaluation_report.md"
 FINAL_REPORT_PATH = REPORTS_DIR / "final_report.md"
 SENSITIVITY_REPORT_PATH = REPORTS_DIR / "sensitivity_report.md"
 CHATBOT_LOG_PATH = REPORTS_DIR / "chatbot_log.md"
+
+CROSSVAL_SAFE_FOLDS_CSV_PATH = REPORTS_DIR / "crossval_safe_folds.csv"
+CROSSVAL_SAFE_SUMMARY_CSV_PATH = REPORTS_DIR / "crossval_safe_summary.csv"
+
+TAIWAN_EXTERNAL_FOLDS_CSV_PATH = (
+    REPORTS_DIR / "taiwan_external_validation_folds.csv"
+)
+
+TAIWAN_EXTERNAL_SUMMARY_CSV_PATH = (
+    REPORTS_DIR / "taiwan_external_validation_summary.csv"
+)
+
+TAIWAN_EXTERNAL_REPORT_PATH = (
+    REPORTS_DIR / "taiwan_external_validation_report.md"
+)
+
+WEIGHT_SENSITIVITY_CSV_PATH = (
+    REPORTS_DIR / "safe_weight_sensitivity.csv"
+)
+
+WEIGHT_SENSITIVITY_SUMMARY_CSV_PATH = (
+    REPORTS_DIR / "safe_weight_sensitivity_summary.csv"
+)
+
+WEIGHT_SENSITIVITY_REPORT_PATH = (
+    REPORTS_DIR / "safe_weight_sensitivity_report.md"
+)
 
 OUTLIER_REPORT_PATH = REPORTS_DIR / "outlier_analysis_report.md"
 MODEL_COMPARISON_REPORT_PATH = REPORTS_DIR / "model_comparison_report.md"

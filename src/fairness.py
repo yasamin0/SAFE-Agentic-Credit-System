@@ -52,6 +52,44 @@ def _perfect_fairness_metrics():
         "fairness_aggregate": 1.0,
     }
 
+def _weighted_fairness_aggregate(
+    fairness_score_spd,
+    fairness_score_eod,
+    fairness_score_aod,
+    fairness_score_dir,
+    weights=None,
+):
+    """
+    Compute a weighted Fairness Aggregate.
+
+    Default weights are equal.
+    Alternative weights are used in sensitivity analysis to test whether
+    the fairness conclusion is stable under different aggregation policies.
+    """
+    if weights is None:
+        weights = {
+            "spd": 0.25,
+            "eod": 0.25,
+            "aod": 0.25,
+            "dir": 0.25,
+        }
+
+    weight_sum = sum(weights.values())
+
+    if weight_sum <= 0:
+        raise ValueError("Fairness weights must sum to a positive value.")
+
+    w_spd = weights["spd"] / weight_sum
+    w_eod = weights["eod"] / weight_sum
+    w_aod = weights["aod"] / weight_sum
+    w_dir = weights["dir"] / weight_sum
+
+    return float(
+        w_spd * fairness_score_spd
+        + w_eod * fairness_score_eod
+        + w_aod * fairness_score_aod
+        + w_dir * fairness_score_dir
+    )
 
 def _score_fairness_from_group_table(group_table):
     """Convert group-rate gaps into normalized fairness scores."""
@@ -76,12 +114,12 @@ def _score_fairness_from_group_table(group_table):
     fairness_score_aod = float(np.clip(1.0 - aod_gap, 0.0, 1.0))
     fairness_score_dir = float(np.clip(dir_ratio, 0.0, 1.0))
 
-    fairness_aggregate = _safe_mean([
-        fairness_score_spd,
-        fairness_score_eod,
-        fairness_score_aod,
-        fairness_score_dir,
-    ])
+    fairness_aggregate = _weighted_fairness_aggregate(
+        fairness_score_spd=fairness_score_spd,
+        fairness_score_eod=fairness_score_eod,
+        fairness_score_aod=fairness_score_aod,
+        fairness_score_dir=fairness_score_dir,
+    )
 
     return {
         "spd_gap": spd_gap,
@@ -112,6 +150,64 @@ def _compute_fairness_from_predictions(y_true, y_pred, group):
 
     return metrics, group_table
 
+def _fairness_weight_sensitivity(fairness_metrics):
+    """
+    Evaluate alternative weighting schemes for the Fairness Aggregate.
+    """
+    weight_schemes = {
+        "equal": {
+            "spd": 0.25,
+            "eod": 0.25,
+            "aod": 0.25,
+            "dir": 0.25,
+        },
+        "spd_focused": {
+            "spd": 0.40,
+            "eod": 0.20,
+            "aod": 0.20,
+            "dir": 0.20,
+        },
+        "eod_focused": {
+            "spd": 0.20,
+            "eod": 0.40,
+            "aod": 0.20,
+            "dir": 0.20,
+        },
+        "aod_focused": {
+            "spd": 0.20,
+            "eod": 0.20,
+            "aod": 0.40,
+            "dir": 0.20,
+        },
+        "dir_focused": {
+            "spd": 0.20,
+            "eod": 0.20,
+            "aod": 0.20,
+            "dir": 0.40,
+        },
+    }
+
+    rows = []
+
+    for scheme_name, weights in weight_schemes.items():
+        aggregate = _weighted_fairness_aggregate(
+            fairness_score_spd=fairness_metrics["fairness_score_spd"],
+            fairness_score_eod=fairness_metrics["fairness_score_eod"],
+            fairness_score_aod=fairness_metrics["fairness_score_aod"],
+            fairness_score_dir=fairness_metrics["fairness_score_dir"],
+            weights=weights,
+        )
+
+        rows.append({
+            "scheme": scheme_name,
+            "w_spd": weights["spd"],
+            "w_eod": weights["eod"],
+            "w_aod": weights["aod"],
+            "w_dir": weights["dir"],
+            "fairness_aggregate": aggregate,
+        })
+
+    return pd.DataFrame(rows)
 
 def _apply_threshold_mitigation_search(
     y_true,

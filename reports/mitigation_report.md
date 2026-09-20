@@ -13,12 +13,12 @@ The experiment first identifies the group with the lowest baseline positive pred
 - Baseline AUC: 0.8048
 - Mitigated AUC: 0.8048
 - AURGA: 0.7095
-- RGR Aggregate: 0.9281
+- RGR Aggregate: 0.9596
 - AURGE: 0.9712
 - Baseline fairness aggregate: 0.5399
 - Mitigated fairness aggregate: 0.6650
-- Baseline paper-based SAFE score: 0.7872
-- Mitigated paper-based SAFE score: 0.8185
+- Baseline paper-based SAFE score: 0.7951
+- Mitigated paper-based SAFE score: 0.8263
 
 ## Baseline Fairness Components
 - SPD gap: 0.3611
@@ -54,13 +54,13 @@ The experiment first identifies the group with the lowest baseline positive pred
 
 |   delta |   base_threshold |   adjusted_threshold_for_disadvantaged_group | disadvantaged_group   | ranking_metrics_status            |   fairness_aggregate |   spd_gap |   eod_gap |   aod_gap |   dir_ratio |   positive_rate_gap |   safe_score |
 |--------:|-----------------:|---------------------------------------------:|:----------------------|:----------------------------------|---------------------:|----------:|----------:|----------:|------------:|--------------------:|-------------:|
-|    0.15 |             0.55 |                                         0.4  | male mar/wid          | unchanged_by_threshold_mitigation |             0.665022 |  0.258004 |  0.254902 |  0.246499 |    0.419492 |            0.258004 |     0.818451 |
-|    0.2  |             0.55 |                                         0.35 | male mar/wid          | unchanged_by_threshold_mitigation |             0.665022 |  0.258004 |  0.254902 |  0.246499 |    0.419492 |            0.258004 |     0.818451 |
-|    0.02 |             0.55 |                                         0.53 | male mar/wid          | unchanged_by_threshold_mitigation |             0.637051 |  0.277778 |  0.254902 |  0.294118 |    0.375    |            0.277778 |     0.811458 |
-|    0.05 |             0.55 |                                         0.5  | male mar/wid          | unchanged_by_threshold_mitigation |             0.637051 |  0.277778 |  0.254902 |  0.294118 |    0.375    |            0.277778 |     0.811458 |
-|    0.08 |             0.55 |                                         0.47 | male mar/wid          | unchanged_by_threshold_mitigation |             0.637051 |  0.277778 |  0.254902 |  0.294118 |    0.375    |            0.277778 |     0.811458 |
-|    0.1  |             0.55 |                                         0.45 | male mar/wid          | unchanged_by_threshold_mitigation |             0.637051 |  0.277778 |  0.254902 |  0.294118 |    0.375    |            0.277778 |     0.811458 |
-|    0    |             0.55 |                                         0.55 | male mar/wid          | unchanged_by_threshold_mitigation |             0.539931 |  0.361111 |  0.333333 |  0.333333 |    0.1875   |            0.361111 |     0.787178 |
+|    0.15 |             0.55 |                                         0.4  | male mar/wid          | unchanged_by_threshold_mitigation |             0.665022 |  0.258004 |  0.254902 |  0.246499 |    0.419492 |            0.258004 |     0.826323 |
+|    0.2  |             0.55 |                                         0.35 | male mar/wid          | unchanged_by_threshold_mitigation |             0.665022 |  0.258004 |  0.254902 |  0.246499 |    0.419492 |            0.258004 |     0.826323 |
+|    0.02 |             0.55 |                                         0.53 | male mar/wid          | unchanged_by_threshold_mitigation |             0.637051 |  0.277778 |  0.254902 |  0.294118 |    0.375    |            0.277778 |     0.81933  |
+|    0.05 |             0.55 |                                         0.5  | male mar/wid          | unchanged_by_threshold_mitigation |             0.637051 |  0.277778 |  0.254902 |  0.294118 |    0.375    |            0.277778 |     0.81933  |
+|    0.08 |             0.55 |                                         0.47 | male mar/wid          | unchanged_by_threshold_mitigation |             0.637051 |  0.277778 |  0.254902 |  0.294118 |    0.375    |            0.277778 |     0.81933  |
+|    0.1  |             0.55 |                                         0.45 | male mar/wid          | unchanged_by_threshold_mitigation |             0.637051 |  0.277778 |  0.254902 |  0.294118 |    0.375    |            0.277778 |     0.81933  |
+|    0    |             0.55 |                                         0.55 | male mar/wid          | unchanged_by_threshold_mitigation |             0.539931 |  0.361111 |  0.333333 |  0.333333 |    0.1875   |            0.361111 |     0.79505  |
 
 ## Output Files
 - Threshold search CSV: mitigation_threshold_search.csv

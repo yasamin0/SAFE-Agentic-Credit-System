@@ -1,18 +1,29 @@
 ### Detailed SAFE AI Evaluation Report
 - **Accuracy (AUC)**: 0.8048
+- **AUC 95% CI Lower**: 0.7403
+- **AUC 95% CI Upper**: 0.8668
+- **AUC Bootstrap SD**: 0.0329
+- **5-Fold SAFE Evaluation File**: crossval_safe_folds.csv
+- **5-Fold SAFE Summary File**: crossval_safe_summary.csv
+- **Cramér-von Mises Statistic**: 4.740167
+- **Cramér-von Mises p-value**: 0.000000
+- **Cramér-von Mises Significant at 0.05**: True
 - **PR-AUC**: 0.6486
 - **Precision**: 0.6591
 - **Recall**: 0.4833
 - **F1 Score**: 0.5577
 - **Brier Score**: 0.1592
+- **Calibration Intercept**: -0.2681
+- **Calibration Slope**: 1.0835
 - **Classification Metrics File**: classification_metrics.csv
 - **Confusion Matrix File**: confusion_matrix.csv
 - **Calibration Curve File**: calibration_curve.csv
 - **Confusion Matrix Plot**: confusion_matrix.png
 - **Calibration Curve Plot**: calibration_curve.png
 - **Fairness Aggregate**: 0.5399
+- **Fairness Weight Sensitivity Range**: 0.4694 - 0.5653
 - **Robustness Aggregate**: 0.9655
-- **Baseline SAFE Score**: 0.7872
+- **Baseline SAFE Score**: 0.7951
 - **Selected Operational Model**: Voting Ensemble
 - **SAFE Model Selection File**: safe_model_selection_comparison.csv
 - **SAFE Model Selection Plot**: safe_model_selection_comparison.png
@@ -28,13 +39,13 @@
 - **Selected Adjusted Threshold**: 0.4000
 - **Mitigated AUC**: 0.8048
 - **Mitigated Fairness Aggregate**: 0.6650
-- **Mitigated SAFE Score**: 0.8185
+- **Mitigated SAFE Score**: 0.8263
 - **Mitigated Fairness Components**: SPD=0.7420, EOD=0.7451, AOD=0.7535, DIR=0.4195
 - **Fairness Components**: SPD=0.6389, EOD=0.6667, AOD=0.6667, DIR=0.1875
 - **Robustness Components**: Noise=0.9941, Dropout=0.9036, Missingness=0.9988
 - **AURGR Gaussian Noise**: 0.9916
 - **AURGR Percentile Swapping**: 0.8645
-- **RGR Aggregate**: 0.9281
+- **RGR Aggregate**: 0.9596
 - **RGR Curve Files**: rgr_gaussian_curve.csv, rgr_swapping_curve.csv
 - **RGR Plot Files**: rgr_gaussian_curve.png, rgr_swapping_curve.png
 - **AURGE**: 0.9712
@@ -42,7 +53,7 @@
 - **RGE Curve File**: rge_curve.csv
 - **RGE Plot Files**: rge_curve.png, rge_feature_importance.png
 - **AURGA**: 0.7095
-- **SHAP-RGE Spearman Correlation**: 0.908143839238498
+- **SHAP-RGE Spearman Correlation**: 0.9025383395029084
 - **Top Models SHAP-RGE Comparison File**: top_models_shap_rge_comparison.csv
 - **Top Models SHAP-RGE Report**: top_models_shap_rge_report.md
 - **Model Metrics Comparison File**: model_metrics_comparison.csv

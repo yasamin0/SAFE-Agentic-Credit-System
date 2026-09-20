@@ -25,23 +25,31 @@ from src.paths import (
 )
 
 
-def _small_param_grid(model_name):
-    """Return a small grid so model selection stays fast."""
+def _param_grid(model_name):
+    """Return an extended hyperparameter grid for model optimization."""
     grids = {
         "Logistic Regression": {
-            "C": [0.1, 1.0, 10.0],
+            "C": [0.01, 0.1, 1.0, 10.0, 100.0],
+            "solver": ["liblinear", "lbfgs"],
         },
+
         "Random Forest": {
-            "n_estimators": [100, 200],
-            "max_depth": [None, 5, 10],
+            "n_estimators": [100, 200, 300, 500],
+            "max_depth": [None, 5, 10, 20],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "max_features": ["sqrt", "log2"],
         },
+
         "XGBoost": {
-            "n_estimators": [80, 120],
-            "max_depth": [3, 5],
-            "learning_rate": [0.05, 0.1],
+            "n_estimators": [100, 200, 300],
+            "max_depth": [3, 5, 7],
+            "learning_rate": [0.01, 0.05, 0.1],
+            "subsample": [0.8, 1.0],
+            "colsample_bytree": [0.8, 1.0],
+            "min_child_weight": [1, 3, 5],
         },
     }
-
     return grids.get(model_name)
 
 
@@ -62,6 +70,7 @@ def _fit_with_grid_search(model_name, model, X_train, y_train, cv, param_grid):
         cv=cv,
         n_jobs=-1,
         refit=True,
+        verbose=2,
     )
     search.fit(X_train, y_train)
 
@@ -95,7 +104,7 @@ def _fit_with_default_params(model_name, model, X_train, y_train, cv):
 
 def _train_one_model(model_name, model, X_train, y_train, cv):
     """Train one candidate model and return its summary."""
-    param_grid = _small_param_grid(model_name)
+    param_grid = _param_grid(model_name)
 
     if param_grid:
         best_model, best_cv_auc, best_params, cv_results = _fit_with_grid_search(
@@ -135,7 +144,7 @@ def _write_model_card(summary_df):
         f.write("## Training Summary\n\n")
         f.write(
             "Multiple model candidates were trained and compared using "
-            "3-fold stratified cross-validation.\n\n"
+            "5-fold stratified cross-validation.\n\n"
         )
         f.write(summary_df.to_markdown(index=False))
         f.write("\n\n")
@@ -179,13 +188,18 @@ def model_training_tool(description: str):
         X_train, y_train = _load_training_data()
 
         models = build_model_candidates()
-        cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+        cv = StratifiedKFold(
+            n_splits=5,
+            shuffle=True,
+            random_state=42,
+        )
 
         trained_models = {}
         summary_rows = []
         cv_results_list = []
 
         for model_name, model in models.items():
+            print(f"\n[TRAINING] Starting {model_name}...")
             best_model, summary_row, cv_results = _train_one_model(
                 model_name=model_name,
                 model=model,

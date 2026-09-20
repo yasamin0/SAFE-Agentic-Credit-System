@@ -9,7 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from src.rga import compute_rga_curve
-from src.rgr import compute_rgr_curve
+from src.rgr import compute_rgr_curve, compute_reference_rgr
 from src.rge import compute_rge_feature_importance, compute_rge_curve
 
 
@@ -109,6 +109,13 @@ def run_model_metric_comparison(
             random_state=random_state,
         )
 
+        reference_rgr = compute_reference_rgr(
+            model=model,
+            X_test=X_test,
+            intensity=0.5,
+            random_state=random_state,
+        )
+
         rge_importance_df = compute_rge_feature_importance(model, X_test)
         _, aurge = compute_rge_curve(model, X_test, rge_importance_df)
 
@@ -117,7 +124,8 @@ def run_model_metric_comparison(
             "AURGA": float(aurga),
             "AURGR_Gaussian": float(aurgr_gaussian),
             "AURGR_Swapping": float(aurgr_swapping),
-            "AURGR": float(np.mean([aurgr_gaussian, aurgr_swapping])),
+            "RGR_Reference": float(reference_rgr),
+            "AURGR": float(reference_rgr),
             "AURGE": float(aurge),
         })
 
