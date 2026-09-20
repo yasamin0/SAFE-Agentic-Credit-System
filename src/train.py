@@ -148,12 +148,15 @@ def _write_model_card(summary_df):
         )
         f.write(summary_df.to_markdown(index=False))
         f.write("\n\n")
-        f.write("## Operational Governance Model\n\n")
+        best_model_name = summary_df.iloc[0]["model"]
+        best_cv_auc = summary_df.iloc[0]["best_cv_auc"]
+
+        f.write("## Selected Model\n\n")
         f.write(
-            "The operational model saved as `best_model.pkl` is XGBoost "
-            "for compatibility with the existing SAFE pipeline.\n\n"
+            f"The model saved as `best_model.pkl` is {best_model_name}, "
+            f"selected objectively based on the highest mean 5-fold "
+            f"cross-validation ROC-AUC ({best_cv_auc:.6f}).\n\n"
         )
-        f.write(f"Detailed CV results are saved to `{CV_RESULTS_PATH.name}`.\n")
 
 
 def _write_model_comparison_report(summary_df):
@@ -180,9 +183,9 @@ def _save_model_cv_auc_plot(summary_df):
 @tool
 def model_training_tool(description: str):
     """
-    Train model candidates and save training artifacts.
-
-    XGBoost remains the operational governance model saved as best_model.pkl.
+    Train model candidates, perform hyperparameter optimization,
+    and save the model with the highest mean 5-fold CV ROC-AUC
+    as best_model.pkl.
     """
     try:
         X_train, y_train = _load_training_data()
@@ -212,13 +215,23 @@ def model_training_tool(description: str):
             summary_rows.append(summary_row)
             cv_results_list.append(cv_results)
 
-        # Keep XGBoost as the current governance model.
-        joblib.dump(trained_models["XGBoost"], MODEL_PATH)
-
+        # Select the best-performing model based on mean 5-fold CV AUC.
         summary_df = pd.DataFrame(summary_rows).sort_values(
             "best_cv_auc",
             ascending=False,
+        ).reset_index(drop=True)
+
+        best_model_name = summary_df.loc[0, "model"]
+        best_cv_auc = float(summary_df.loc[0, "best_cv_auc"])
+
+        # Save the objectively selected best model as the main pipeline model.
+        joblib.dump(trained_models[best_model_name], MODEL_PATH)
+
+        print(
+            f"\n[MODEL SELECTION] Selected {best_model_name} "
+            f"with CV AUC = {best_cv_auc:.6f}"
         )
+
         cv_results_df = pd.concat(cv_results_list, ignore_index=True, sort=False)
 
         cv_results_df.to_csv(CV_RESULTS_PATH, index=False)
