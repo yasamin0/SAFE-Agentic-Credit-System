@@ -5,6 +5,7 @@ import pandas as pd
 
 from scipy.stats import cramervonmises_2samp
 from sklearn.metrics import roc_auc_score
+from sklearn.linear_model import LogisticRegression
 
 
 def bootstrap_auc_ci(
@@ -258,6 +259,58 @@ def cramervonmises_outcome_separation_test(
         "n_class_1": int(len(probs_class_1)),
     }
 
+def compute_calibration_intercept_slope(
+    y_true,
+    y_probs,
+):
+    """
+    Estimate calibration intercept and slope.
+
+    Ideal calibration:
+    intercept = 0
+    slope = 1
+    """
+    y_true = np.asarray(y_true)
+    y_probs = np.asarray(y_probs, dtype=float)
+
+    if len(y_true) != len(y_probs):
+        raise ValueError(
+            "y_true and y_probs must have the same length."
+        )
+
+    eps = 1e-6
+
+    probs = np.clip(
+        y_probs,
+        eps,
+        1.0 - eps,
+    )
+
+    logit_probs = np.log(
+        probs / (1.0 - probs)
+    ).reshape(-1, 1)
+
+    calibration_model = LogisticRegression(
+        penalty=None,
+        solver="lbfgs",
+        max_iter=2000,
+    )
+
+    calibration_model.fit(
+        logit_probs,
+        y_true,
+    )
+
+    intercept = float(
+        calibration_model.intercept_[0]
+    )
+
+    slope = float(
+        calibration_model.coef_[0][0]
+    )
+
+    return intercept, slope
+
 def build_statistical_summary(
     auc_ci,
     cvm_result=None,
@@ -279,7 +332,7 @@ def build_statistical_summary(
 
     if cvm_result is not None:
         rows.append({
-            "analysis": "Cramer-von Mises",
+            "analysis": "Cramer-von Mises Outcome Separation",
             "estimate": np.nan,
             "ci_lower": np.nan,
             "ci_upper": np.nan,

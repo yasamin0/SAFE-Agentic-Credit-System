@@ -6,9 +6,16 @@ import pandas as pd
 from scipy.stats import t
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import (
+    roc_auc_score,
+    brier_score_loss,
+)
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
+from src.statistical_tests import (
+    compute_calibration_intercept_slope,
+    cramervonmises_outcome_separation_test,
+)
 
 from src.config import (
     RANDOM_STATE,
@@ -355,6 +362,47 @@ def run_five_fold_safe_evaluation(
         )
 
         # --------------------------------------------
+        # CALIBRATION
+        # --------------------------------------------
+        calibration_intercept, calibration_slope = (
+            compute_calibration_intercept_slope(
+                y_true=y_val,
+                y_probs=y_probs,
+            )
+        )
+
+        brier_score = float(
+            brier_score_loss(
+                y_val,
+                y_probs,
+            )
+        )
+
+        # --------------------------------------------
+        # CRAMER-VON MISES OUTCOME SEPARATION TEST
+        # --------------------------------------------
+        # Tests whether the predicted-probability distributions
+        # differ between the two observed outcome classes.
+        #
+        # H0: P(y_hat | y=0) and P(y_hat | y=1) follow
+        #     the same distribution.
+        #
+        # A small p-value indicates statistically significant
+        # distributional separation between the two outcome classes.
+        # This is a discrimination/separation test, not a
+        # calibration test.
+        cvm_result = cramervonmises_outcome_separation_test(
+            y_true=y_val,
+            y_probs=y_probs,
+        )
+
+        cvm_statistic = float(cvm_result["statistic"])
+        cvm_p_value = float(cvm_result["p_value"])
+        cvm_significant = bool(
+            cvm_result["significant_0_05"]
+        )
+
+        # --------------------------------------------
         # FAIRNESS
         # --------------------------------------------
         fairness_metrics, _, _ = (
@@ -472,6 +520,12 @@ def run_five_fold_safe_evaluation(
             "n_train": int(len(train_idx)),
             "n_validation": int(len(val_idx)),
             "auc": auc_score,
+            "calibration_intercept": float(calibration_intercept),
+            "calibration_slope": float(calibration_slope),
+            "brier_score": brier_score,
+            "cvm_statistic": cvm_statistic,
+            "cvm_p_value": cvm_p_value,
+            "cvm_significant_0_05": cvm_significant,
             "aurga": float(aurga),
             "aurgr_gaussian": float(
                 aurgr_gaussian
@@ -501,6 +555,10 @@ def run_five_fold_safe_evaluation(
     # --------------------------------------------
     metrics = [
         "auc",
+        "calibration_intercept",
+        "calibration_slope",
+        "brier_score",
+        "cvm_statistic",
         "aurga",
         "reference_rgr",
         "rgr_aggregate",

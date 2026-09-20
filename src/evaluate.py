@@ -14,7 +14,10 @@ import matplotlib.pyplot as plt
 from crewai.tools import tool
 
 from sklearn.calibration import calibration_curve
-from sklearn.linear_model import LogisticRegression
+# LogisticRegression is no longer imported here because calibration
+# intercept/slope estimation has been centralized in
+# src.statistical_tests.compute_calibration_intercept_slope.
+# from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
     brier_score_loss,
@@ -33,6 +36,7 @@ from src.statistical_tests import (
     bootstrap_auc_ci,
     build_statistical_summary,
     cramervonmises_outcome_separation_test,
+    compute_calibration_intercept_slope,
 )
 
 from src.config import (
@@ -634,39 +638,58 @@ def _interaction_analysis(
 
     return df, effect_df, interaction_df
 
-def _compute_calibration_intercept_slope(y_true, y_probs):
-    """
-    Estimate calibration intercept and slope.
-
-    Ideal calibration:
-    intercept = 0
-    slope = 1
-    """
-    y_true = np.asarray(y_true)
-    y_probs = np.asarray(y_probs)
-
-    eps = 1e-6
-    probs = np.clip(y_probs, eps, 1.0 - eps)
-
-    logit_probs = np.log(
-        probs / (1.0 - probs)
-    ).reshape(-1, 1)
-
-    calibration_model = LogisticRegression(
-        penalty=None,
-        solver="lbfgs",
-        max_iter=2000,
-    )
-
-    calibration_model.fit(
-        logit_probs,
-        y_true,
-    )
-
-    intercept = float(calibration_model.intercept_[0])
-    slope = float(calibration_model.coef_[0][0])
-
-    return intercept, slope
+# -------------------------------------------------------------------------
+# DEPRECATED: Calibration helper moved to src.statistical_tests
+# -------------------------------------------------------------------------
+# This function was originally implemented locally in evaluate.py.
+# It is now centralized in src.statistical_tests as
+# compute_calibration_intercept_slope().
+#
+# Reason for the change:
+# The same calibration methodology is now required in both:
+#   1. the holdout/test-set evaluation, and
+#   2. the stratified 5-fold cross-validation evaluation.
+#
+# Keeping a single shared implementation avoids duplicated calibration
+# logic and ensures that calibration intercept and slope are computed
+# consistently across the holdout and cross-validation analyses.
+#
+# This legacy implementation is retained here temporarily for traceability
+# during the manuscript revision and is intentionally not executed.
+#
+# def _compute_calibration_intercept_slope(y_true, y_probs):
+#     """
+#     Estimate calibration intercept and slope.
+#
+#     Ideal calibration:
+#     intercept = 0
+#     slope = 1
+#     """
+#     y_true = np.asarray(y_true)
+#     y_probs = np.asarray(y_probs)
+#
+#     eps = 1e-6
+#     probs = np.clip(y_probs, eps, 1.0 - eps)
+#
+#     logit_probs = np.log(
+#         probs / (1.0 - probs)
+#     ).reshape(-1, 1)
+#
+#     calibration_model = LogisticRegression(
+#         penalty=None,
+#         solver="lbfgs",
+#         max_iter=2000,
+#     )
+#
+#     calibration_model.fit(
+#         logit_probs,
+#         y_true,
+#     )
+#
+#     intercept = float(calibration_model.intercept_[0])
+#     slope = float(calibration_model.coef_[0][0])
+#
+#     return intercept, slope
 
 def _compute_classification_and_calibration_metrics(y_true, y_probs, threshold):
     """
@@ -1228,7 +1251,7 @@ def evaluation_and_risk_tool(description: str):
             y_probs=y_probs,
             threshold=PRED_THRESHOLD,
         )
-        calibration_intercept, calibration_slope = _compute_calibration_intercept_slope(
+        calibration_intercept, calibration_slope = compute_calibration_intercept_slope(
             y_true=y_test,
             y_probs=y_probs,
         )
